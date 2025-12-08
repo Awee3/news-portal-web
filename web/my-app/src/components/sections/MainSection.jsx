@@ -2,19 +2,22 @@ import Image from "next/image";
 import Link from "next/link";
 
 /**
- * Featured section with 2 text articles (left) + 1 big image (right)
+ * Main section with 2 text articles (left) + 1 big image (right)
  * @param {Array} sideTitles - Array of 2 article objects with title, excerpt, href
  * @param {Object} featured - Featured image object with img, href
  */
-export default function FeaturedSection({ sideTitles, featured }) {
+
+export default function MainSection({ sideTitles, featured }) {
   return (
     <section className="grid grid-cols-1 md:grid-cols-12 gap-6 mb-8 pb-8 border-b border-gray-200">
-      {/* LEFT: 2 text-only articles */}
-      <div className="md:col-span-5 space-y-6">
+      {/* LEFT: 2 text-only articles - flexbox untuk distribute space */}
+      <div className="md:col-span-5 flex flex-col h-full">
         {sideTitles.map((article, i) => (
           <article 
             key={article.href} 
-            className={i < sideTitles.length - 1 ? "pb-6 border-b border-gray-200" : ""}
+            className={`flex-1 flex flex-col justify-center ${
+              i < sideTitles.length - 1 ? "border-b border-gray-200" : ""
+            }`}
           >
             <Link href={article.href}>
               <h2 className="text-xl font-bold leading-snug hover:underline">
