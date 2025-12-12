@@ -13,9 +13,7 @@ import (
 
 	"github.com/gorilla/mux"
 )
-
 // Admin-only user management functions
-
 func (s *Server) handleCreateUserByAdmin() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req database.UserRequest
