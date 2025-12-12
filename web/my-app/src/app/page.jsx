@@ -12,55 +12,55 @@ export default function HomePage() {
           {
             title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.",
             excerpt: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit. Aenam Quis Magna In Urna Semper Lacinia...",
-            href: "/international/article-1",
+            slug: "lorem-ipsum-dolor-sit-amet-1", // Tambahkan slug     
           },
           {
             title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.",
             excerpt: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit. Cras elementum libero ac...",
-            href: "/business/article-2",
+            slug: "lorem-ipsum-dolor-sit-amet-2", // Tambahkan slug
           },
         ],
         featured: {
           img: "/test.png",
-          href: "/featured/1",
+          slug: "featured-article-1", // Tambahkan slug
           priority: true,
         }
       },
       carouselItems: [
-        { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", href: "#" },
-        { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", href: "#" },
-        { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", href: "#" },
-        { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", href: "#" },
+        { title: "Lorem Ipsum Dolor Sit Amet", img: "/test.png", slug: "carousel-article-1" },
+        { title: "Lorem Ipsum Dolor Sit Amet", img: "/test.png", slug: "carousel-article-2" },
+        { title: "Lorem Ipsum Dolor Sit Amet", img: "/test.png", slug: "carousel-article-3" },
+        { title: "Lorem Ipsum Dolor Sit Amet", img: "/test.png", slug: "carousel-article-4" },
       ],
       bottomMainSection: {
         sideTitles: [
           {
             title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.",
             excerpt: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit. Aenam Quis Magna In Urna Semper Lacinia...",
-            href: "/sports/article-1",
+            slug: "lorem-ipsum-dolor-sit-amet-3", // Tambahkan slug
           },
           {
             title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.",
             excerpt: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit. Cras elementum libero ac...",
-            href: "/sports/article-2",
+            slug: "lorem-ipsum-dolor-sit-amet-4", // Tambahkan slug
           },
         ],
         featured: {
           img: "/test.png",
-          href: "/featured/2",
+          slug: "featured-article-2", // Tambahkan slug
         }
       },
       sidebar: {
         mainArticle: {
           title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.",
           img: "/test.png",
-          href: "/sidebar/main-1",
+          slug: "sidebar-main-1",
         },
         thumbArticles: [
-          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", href: "#", date: "Senin, 9 Des 2025" },
-          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", href: "#", date: "Senin, 9 Des 2025" },
-          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", href: "#", date: "Senin, 9 Des 2025" },
-          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", href: "#", date: "Senin, 9 Des 2025" },
+          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", slug: "thumb-article-1", date: "Senin, 9 Des 2025" },
+          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", slug: "thumb-article-2", date: "Senin, 9 Des 2025" },
+          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", slug: "thumb-article-3", date: "Senin, 9 Des 2025" },
+          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", slug: "thumb-article-4", date: "Senin, 9 Des 2025" },
         ]
       }
     },
@@ -70,31 +70,31 @@ export default function HomePage() {
       id: 2,
       topMainSection: {
         sideTitles: [
-          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", excerpt: "Excerpt 2.1...", href: "/article-2-1" },
-          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", excerpt: "Excerpt 2.2...", href: "/article-2-2" },
+          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", excerpt: "Excerpt 2.1...", slug: "lorem-ipsum-dolor-sit-amet-5" },
+          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", excerpt: "Excerpt 2.2...", slug: "lorem-ipsum-dolor-sit-amet-6" },
         ],
-        featured: { img: "/test.png", href: "/featured/3" }
+        featured: { img: "/test.png", slug: "featured-article-3" }
       },
       carouselItems: [
-        { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", href: "#" },
-        { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", href: "#" },
-        { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", href: "#" },
-        { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", href: "#" },
+        { title: "Lorem Ipsum Dolor Sit Amet", img: "/test.png", slug: "carousel-article-5" },
+        { title: "Lorem Ipsum Dolor Sit Amet", img: "/test.png", slug: "carousel-article-6" },
+        { title: "Lorem Ipsum Dolor Sit Amet", img: "/test.png", slug: "carousel-article-7" },
+        { title: "Lorem Ipsum Dolor Sit Amet", img: "/test.png", slug: "carousel-article-8" },
       ],
       bottomMainSection: {
         sideTitles: [
-          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", excerpt: "Excerpt 2.3...", href: "/article-2-3" },
-          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", excerpt: "Excerpt 2.4...", href: "/article-2-4" },
+          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", excerpt: "Excerpt 2.3...", slug: "lorem-ipsum-dolor-sit-amet-7" },
+          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", excerpt: "Excerpt 2.4...", slug: "lorem-ipsum-dolor-sit-amet-8" },
         ],
-        featured: { img: "/test.png", href: "/featured/4" }
+        featured: { img: "/test.png", slug: "featured-article-4" }
       },
       sidebar: {
-        mainArticle: { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", href: "/sidebar/main-2" },
+        mainArticle: { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", slug: "sidebar-main-2" },
         thumbArticles: [
-          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", href: "#", date: "Senin, 9 Des 2025" },
-          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", href: "#", date: "Senin, 9 Des 2025" },
-          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", href: "#", date: "Senin, 9 Des 2025" },
-          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", href: "#", date: "Senin, 9 Des 2025" },
+          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", slug: "thumb-article-5", date: "Senin, 9 Des 2025" },
+          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", slug: "thumb-article-6", date: "Senin, 9 Des 2025" },
+          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", slug: "thumb-article-7", date: "Senin, 9 Des 2025" },
+          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", slug: "thumb-article-8", date: "Senin, 9 Des 2025" },
         ]
       }
     },
@@ -104,31 +104,31 @@ export default function HomePage() {
       id: 3,
       topMainSection: {
         sideTitles: [
-          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", excerpt: "Excerpt 3.1...", href: "/article-3-1" },
-          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", excerpt: "Excerpt 3.2...", href: "/article-3-2" },
+          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", excerpt: "Excerpt 3.1...", slug: "lorem-ipsum-dolor-sit-amet-9" },
+          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", excerpt: "Excerpt 3.2...", slug: "lorem-ipsum-dolor-sit-amet-10" },
         ],
-        featured: { img: "/test.png", href: "/featured/5" }
+        featured: { img: "/test.png", slug: "featured-article-5" }
       },
       carouselItems: [
-        { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", href: "#" },
-        { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", href: "#" },
-        { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", href: "#" },
-        { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", href: "#" },
+        { title: "Lorem Ipsum Dolor Sit Amet", img: "/test.png", slug: "carousel-article-9" },
+        { title: "Lorem Ipsum Dolor Sit Amet", img: "/test.png", slug: "carousel-article-10" },
+        { title: "Lorem Ipsum Dolor Sit Amet", img: "/test.png", slug: "carousel-article-11" },
+        { title: "Lorem Ipsum Dolor Sit Amet", img: "/test.png", slug: "carousel-article-12" },
       ],
       bottomMainSection: {
         sideTitles: [
-          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", excerpt: "Excerpt 3.3...", href: "/article-3-3" },
-          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", excerpt: "Excerpt 3.4...", href: "/article-3-4" },
+          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", excerpt: "Excerpt 3.3...", slug: "lorem-ipsum-dolor-sit-amet-11" },
+          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", excerpt: "Excerpt 3.4...", slug: "lorem-ipsum-dolor-sit-amet-12" },
         ],
-        featured: { img: "/test.png", href: "/featured/6" }
+        featured: { img: "/test.png", slug: "featured-article-6" }
       },
       sidebar: {
-        mainArticle: { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", href: "/sidebar/main-3" },
+        mainArticle: { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", slug: "sidebar-main-3" },
         thumbArticles: [
-          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", href: "#", date: "Senin, 9 Des 2025" },
-          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", href: "#", date: "Senin, 9 Des 2025" },
-          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", href: "#", date: "Senin, 9 Des 2025" },
-          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", href: "#", date: "Senin, 9 Des 2025" },
+          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", slug: "thumb-article-9", date: "Senin, 9 Des 2025" },
+          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", slug: "thumb-article-10", date: "Senin, 9 Des 2025" },
+          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", slug: "thumb-article-11", date: "Senin, 9 Des 2025" },
+          { title: "Lorem Ipsum Dolor Sit Amet, Consectetur Adipiscing Elit.", img: "/test.png", slug: "thumb-article-12", date: "Senin, 9 Des 2025" },
         ]
       }
     }
