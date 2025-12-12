@@ -9,55 +9,55 @@ export default function SciTechPage() {
           {
             title: "Breakthrough in Quantum Computing Research",
             excerpt: "Scientists achieve major milestone in development of next-generation processors.",
-            href: "/sci-tech/quantum",
+            slug: "quantum-computing-breakthrough",
           },
           {
             title: "AI System Demonstrates Advanced Problem-Solving",
             excerpt: "Machine learning model surpasses expectations in complex cognitive tasks.",
-            href: "/sci-tech/ai-advancement",
+            slug: "ai-system-problem-solving",
           },
         ],
         featured: {
           img: "/test.png",
-          href: "/sci-tech/featured-1",
+          slug: "scitech-featured-article",
           priority: true,
         }
       },
       carouselItems: [
-        { title: "Space Mission Discovers New Exoplanet", img: "/test.png", href: "/sci-tech/exoplanet" },
-        { title: "5G Network Coverage Expands Nationwide", img: "/test.png", href: "/sci-tech/5g" },
-        { title: "Medical Breakthrough in Cancer Treatment", img: "/test.png", href: "/sci-tech/cancer" },
-        { title: "Renewable Energy Technology Advances", img: "/test.png", href: "/sci-tech/renewable" },
+        { title: "Space Mission Discovers New Exoplanet", img: "/test.png", slug: "space-mission-exoplanet" },
+        { title: "5G Network Coverage Expands Nationwide", img: "/test.png", slug: "5g-network-coverage" },
+        { title: "Medical Breakthrough in Cancer Treatment", img: "/test.png", slug: "cancer-treatment-breakthrough" },
+        { title: "Renewable Energy Technology Advances", img: "/test.png", slug: "renewable-energy-advances" },
       ],
       bottomMainSection: {
         sideTitles: [
           {
             title: "Cybersecurity Measures Enhanced Across Sectors",
             excerpt: "New protocols implemented to protect critical infrastructure.",
-            href: "/sci-tech/cybersecurity",
+            slug: "cybersecurity-measures-enhanced",
           },
           {
             title: "Biotechnology Research Yields Promising Results",
             excerpt: "Innovative techniques offer potential for disease prevention.",
-            href: "/sci-tech/biotech",
+            slug: "biotechnology-research-results",
           },
         ],
         featured: {
           img: "/test.png",
-          href: "/sci-tech/featured-2",
+          slug: "cybersecurity-featured",
         }
       },
       sidebar: {
         mainArticle: {
           title: "Tech Giants Announce Collaboration",
           img: "/test.png",
-          href: "/sci-tech/collaboration",
+          slug: "tech-giants-collaboration",
         },
         thumbArticles: [
-          { title: "Smartphone Technology Evolves", img: "/test.png", href: "#", date: "Senin, 9 Des 2025" },
-          { title: "Climate Modeling Improves with AI", img: "/test.png", href: "#", date: "Senin, 9 Des 2025" },
-          { title: "Electric Vehicle Sales Surge", img: "/test.png", href: "#", date: "Minggu, 8 Des 2025" },
-          { title: "Data Privacy Regulations Updated", img: "/test.png", href: "#", date: "Minggu, 8 Des 2025" },
+          { title: "Smartphone Technology Evolves", img: "/test.png", slug: "smartphone-technology-evolves", date: "Senin, 9 Des 2025" },
+          { title: "Climate Modeling Improves with AI", img: "/test.png", slug: "climate-modeling-ai", date: "Senin, 9 Des 2025" },
+          { title: "Electric Vehicle Sales Surge", img: "/test.png", slug: "electric-vehicle-sales", date: "Minggu, 8 Des 2025" },
+          { title: "Data Privacy Regulations Updated", img: "/test.png", slug: "data-privacy-regulations", date: "Minggu, 8 Des 2025" },
         ]
       }
     }
