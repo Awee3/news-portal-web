@@ -24,7 +24,7 @@ func main() {
 		dbPort := getEnvWithDefault("DB_PORT", "5432")
 		dbUser := getEnvWithDefault("DB_USER", "postgres")
 		dbPassword := os.Getenv("DB_PASSWORD")
-		dbName := getEnvWithDefault("DB_NAME", "news")
+		dbName := getEnvWithDefault("DB_NAME", "Winnicode")
 
 		if dbPassword == "" {
 			log.Fatal("❌ Database password required: set DB_PASSWORD or DATABASE_URL")
