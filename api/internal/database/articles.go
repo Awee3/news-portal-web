@@ -1,532 +1,564 @@
 package database
 
 import (
-    "context"
-    "database/sql"
-    "errors"
-    "fmt"
-    "strings"
-    "time"
-    "unicode"
+	"database/sql"
+	"fmt"
+	"regexp"
+	"strings"
+	"time"
 )
 
 type Article struct {
-    ArtikelID        int       `json:"artikel_id"`
-    UserID           int       `json:"user_id"`
-    Judul            string    `json:"judul"`
-    Slug             string    `json:"slug"`
-    Konten           string    `json:"konten"`
-    FeaturedImageURL *string   `json:"featured_image_url"`
-    Status           string    `json:"status"`
-    ViewCount        int       `json:"view_count"`
-    TanggalPublikasi *time.Time `json:"tanggal_publikasi"`
-    MetaTitle        *string   `json:"meta_title"`
-    MetaDescription  *string   `json:"meta_description"`
-    CreatedAt        time.Time `json:"created_at"`
-    UpdatedAt        time.Time `json:"updated_at"`
+	ArtikelID         int        `json:"artikel_id"`
+	Judul             string     `json:"judul"`
+	Slug              string     `json:"slug"`
+	Konten            string     `json:"konten"`
+	Excerpt           *string    `json:"excerpt,omitempty"`
+	GambarUtama       *string    `json:"gambar_utama,omitempty"`
+	Penulis           *string    `json:"penulis,omitempty"`
+	Status            string     `json:"status"`
+	UserID            int        `json:"user_id"`
+	TanggalPublikasi  *time.Time `json:"tanggal_publikasi,omitempty"`
+	TanggalDibuat     time.Time  `json:"tanggal_dibuat"`
+	TanggalDiperbarui time.Time  `json:"tanggal_diperbarui"`
+	// Related data (populated separately)
+	Kategori []Category `json:"kategori,omitempty"`
+	Tags     []Tag      `json:"tags,omitempty"`
 }
 
-type ArticleWithAuthor struct {
-    Article
-    AuthorUsername string `json:"author_username"`
-    AuthorEmail    string `json:"author_email"`
+type ArticleInput struct {
+	Judul            string `json:"judul"`
+	Slug             string `json:"slug,omitempty"`
+	Konten           string `json:"konten"`
+	Excerpt          string `json:"excerpt,omitempty"`
+	GambarUtama      string `json:"gambar_utama,omitempty"`
+	Penulis          string `json:"penulis,omitempty"`
+	Status           string `json:"status,omitempty"`
+	TanggalPublikasi string `json:"tanggal_publikasi,omitempty"`
+	KategoriIDs      []int  `json:"kategori_ids,omitempty"`
+	TagIDs           []int  `json:"tag_ids,omitempty"`
 }
 
-type ArticleRequest struct {
-    Judul            string   `json:"judul"`
-    Konten           string   `json:"konten"`
-    FeaturedImageURL *string  `json:"featured_image_url"`
-    Status           string   `json:"status"`
-    CategoryIDs      []int    `json:"category_ids"`
-    TagIDs           []int    `json:"tag_ids"`
-    MetaTitle        *string  `json:"meta_title"`
-    MetaDescription  *string  `json:"meta_description"`
+type ArticleFilter struct {
+	Status     string
+	KategoriID int
+	TagID      int
+	UserID     int
+	Search     string
+	Limit      int
+	Offset     int
 }
 
-func CreateArticle(ctx context.Context, db *sql.DB, userID int, req *ArticleRequest) (*Article, error) {
-    tx, err := db.BeginTx(ctx, nil)
-    if err != nil {
-        return nil, fmt.Errorf("failed to begin transaction: %w", err)
-    }
-    defer tx.Rollback()
+// GenerateSlug creates URL-friendly slug from title
+func GenerateSlug(title string) string {
+	// Convert to lowercase
+	slug := strings.ToLower(title)
 
-    article, err := CreateArticleTx(ctx, tx, userID, req)
-    if err != nil {
-        return nil, err
-    }
+	// Replace spaces with hyphens
+	slug = strings.ReplaceAll(slug, " ", "-")
 
-    if err := tx.Commit(); err != nil {
-        return nil, fmt.Errorf("failed to commit transaction: %w", err)
-    }
+	// Remove special characters (keep alphanumeric and hyphens)
+	reg := regexp.MustCompile("[^a-z0-9-]+")
+	slug = reg.ReplaceAllString(slug, "")
 
-    return article, nil
+	// Remove consecutive hyphens
+	reg = regexp.MustCompile("-+")
+	slug = reg.ReplaceAllString(slug, "-")
+
+	// Trim hyphens from start and end
+	slug = strings.Trim(slug, "-")
+
+	return slug
 }
 
-func CreateArticleTx(ctx context.Context, tx *sql.Tx, userID int, req *ArticleRequest) (*Article, error) {
-    // Generate slug
-    slug := generateSlug(req.Judul)
-    
-    // Ensure slug uniqueness
-    originalSlug := slug
-    counter := 1
-    for {
-        var existingID int
-        err := tx.QueryRowContext(ctx, "SELECT artikel_id FROM articles WHERE slug = $1", slug).Scan(&existingID)
-        if err == sql.ErrNoRows {
-            break
-        }
-        if err != nil {
-            return nil, fmt.Errorf("failed to check slug uniqueness: %w", err)
-        }
-        slug = fmt.Sprintf("%s-%d", originalSlug, counter)
-        counter++
-    }
+// EnsureUniqueSlug checks if slug exists and appends number if needed
+func EnsureUniqueSlug(db *sql.DB, slug string, excludeID int) (string, error) {
+	baseSlug := slug
+	counter := 1
 
-    // Set publish date if status is published
-    var publishDate *time.Time
-    if req.Status == "published" {
-        now := time.Now()
-        publishDate = &now
-    }
+	for {
+		var exists bool
+		query := `SELECT EXISTS(SELECT 1 FROM articles WHERE slug = $1 AND artikel_id != $2)`
+		err := db.QueryRow(query, slug, excludeID).Scan(&exists)
+		if err != nil {
+			return "", err
+		}
 
-    query := `
-        INSERT INTO articles (user_id, judul, slug, konten, featured_image_url, 
-            status, meta_title, meta_description, view_count, tanggal_publikasi, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
-        RETURNING artikel_id, created_at, updated_at
-    `
+		if !exists {
+			return slug, nil
+		}
 
-    var article Article
-    err := tx.QueryRowContext(ctx, query, userID, req.Judul, slug, req.Konten,
-        req.FeaturedImageURL, req.Status, req.MetaTitle, req.MetaDescription, 0, publishDate).Scan(
-        &article.ArtikelID, &article.CreatedAt, &article.UpdatedAt)
-    if err != nil {
-        return nil, fmt.Errorf("failed to insert article: %w", err)
-    }
-
-    // Set article fields
-    article.UserID = userID
-    article.Judul = req.Judul
-    article.Slug = slug
-    article.Konten = req.Konten
-    article.FeaturedImageURL = req.FeaturedImageURL
-    article.Status = req.Status
-    article.ViewCount = 0
-    article.TanggalPublikasi = publishDate
-    article.MetaTitle = req.MetaTitle
-    article.MetaDescription = req.MetaDescription
-
-    // Insert categories
-    if len(req.CategoryIDs) > 0 {
-        if err := insertArticleCategoriesTx(ctx, tx, article.ArtikelID, req.CategoryIDs); err != nil {
-            return nil, err
-        }
-    }
-
-    // Insert tags
-    if len(req.TagIDs) > 0 {
-        if err := insertArticleTagsTx(ctx, tx, article.ArtikelID, req.TagIDs); err != nil {
-            return nil, err
-        }
-    }
-
-    return &article, nil
+		slug = fmt.Sprintf("%s-%d", baseSlug, counter)
+		counter++
+	}
 }
 
-func GetArticleBySlug(ctx context.Context, db *sql.DB, slug string) (*ArticleWithAuthor, error) {
-    query := `
-        SELECT a.artikel_id, a.user_id, a.judul, a.slug, a.konten,
-            a.featured_image_url, a.status, a.view_count, a.tanggal_publikasi,
-            a.created_at, a.updated_at, a.meta_title, a.meta_description,
-            u.username, u.email
+// GetAllArticles retrieves articles with optional filters
+func GetAllArticles(db *sql.DB, filter ArticleFilter) ([]Article, error) {
+	query := `
+        SELECT DISTINCT a.artikel_id, a.judul, a.slug, a.konten, a.excerpt, 
+               a.gambar_utama, a.penulis, a.status, a.user_id, 
+               a.tanggal_publikasi, a.tanggal_dibuat, a.tanggal_diperbarui
         FROM articles a
-        JOIN users u ON a.user_id = u.user_id
-        WHERE a.slug = $1 AND a.status = 'published'
-    `
-
-    var article ArticleWithAuthor
-    err := db.QueryRowContext(ctx, query, slug).Scan(
-        &article.ArtikelID, &article.UserID, &article.Judul, &article.Slug,
-        &article.Konten, &article.FeaturedImageURL, &article.Status,
-        &article.ViewCount, &article.TanggalPublikasi, &article.CreatedAt,
-        &article.UpdatedAt, &article.MetaTitle, &article.MetaDescription,
-        &article.AuthorUsername, &article.AuthorEmail,
-    )
-    if err != nil {
-        if err == sql.ErrNoRows {
-            return nil, errors.New("article not found")
-        }
-        return nil, err
-    }
-
-    // Increment view count (async)
-    go incrementViewCount(db, article.ArtikelID)
-
-    return &article, nil
-}
-
-func GetArticleByID(ctx context.Context, db *sql.DB, articleID int) (*ArticleWithAuthor, error) {
-    query := `
-        SELECT a.artikel_id, a.user_id, a.judul, a.slug, a.konten,
-            a.featured_image_url, a.status, a.view_count, a.tanggal_publikasi,
-            a.created_at, a.updated_at, a.meta_title, a.meta_description,
-            u.username, u.email
-        FROM articles a
-        JOIN users u ON a.user_id = u.user_id
-        WHERE a.artikel_id = $1
-    `
-
-    var article ArticleWithAuthor
-    err := db.QueryRowContext(ctx, query, articleID).Scan(
-        &article.ArtikelID, &article.UserID, &article.Judul, &article.Slug,
-        &article.Konten, &article.FeaturedImageURL, &article.Status,
-        &article.ViewCount, &article.TanggalPublikasi, &article.CreatedAt,
-        &article.UpdatedAt, &article.MetaTitle, &article.MetaDescription,
-        &article.AuthorUsername, &article.AuthorEmail,
-    )
-    if err != nil {
-        if err == sql.ErrNoRows {
-            return nil, errors.New("article not found")
-        }
-        return nil, err
-    }
-
-    return &article, nil
-}
-
-func ListArticles(ctx context.Context, db *sql.DB, limit, offset int, categoryID *int, status string) ([]ArticleWithAuthor, int, error) {
-    // Base query for counting
-    countQuery := `
-        SELECT COUNT(*)
-        FROM articles a
+        LEFT JOIN artikel_kategori ak ON a.artikel_id = ak.artikel_id
+        LEFT JOIN artikel_tag at ON a.artikel_id = at.artikel_id
         WHERE 1=1
     `
-    
-    // Base query for selecting
-    selectQuery := `
-        SELECT a.artikel_id, a.user_id, a.judul, a.slug, a.konten,
-            a.featured_image_url, a.status, a.view_count, a.tanggal_publikasi,
-            a.created_at, a.updated_at, a.meta_title, a.meta_description,
-            u.username, u.email
-        FROM articles a
-        JOIN users u ON a.user_id = u.user_id
-        WHERE 1=1
+	args := []interface{}{}
+	argCount := 0
+
+	if filter.Status != "" {
+		argCount++
+		query += fmt.Sprintf(" AND a.status = $%d", argCount)
+		args = append(args, filter.Status)
+	}
+
+	if filter.KategoriID > 0 {
+		argCount++
+		query += fmt.Sprintf(" AND ak.kategori_id = $%d", argCount)
+		args = append(args, filter.KategoriID)
+	}
+
+	if filter.TagID > 0 {
+		argCount++
+		query += fmt.Sprintf(" AND at.tag_id = $%d", argCount)
+		args = append(args, filter.TagID)
+	}
+
+	if filter.UserID > 0 {
+		argCount++
+		query += fmt.Sprintf(" AND a.user_id = $%d", argCount)
+		args = append(args, filter.UserID)
+	}
+
+	if filter.Search != "" {
+		argCount++
+		query += fmt.Sprintf(" AND (a.judul ILIKE $%d OR a.konten ILIKE $%d)", argCount, argCount)
+		args = append(args, "%"+filter.Search+"%")
+	}
+
+	query += " ORDER BY a.tanggal_dibuat DESC"
+
+	if filter.Limit > 0 {
+		argCount++
+		query += fmt.Sprintf(" LIMIT $%d", argCount)
+		args = append(args, filter.Limit)
+	}
+
+	if filter.Offset > 0 {
+		argCount++
+		query += fmt.Sprintf(" OFFSET $%d", argCount)
+		args = append(args, filter.Offset)
+	}
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var articles []Article
+	for rows.Next() {
+		var a Article
+		err := rows.Scan(
+			&a.ArtikelID, &a.Judul, &a.Slug, &a.Konten, &a.Excerpt,
+			&a.GambarUtama, &a.Penulis, &a.Status, &a.UserID,
+			&a.TanggalPublikasi, &a.TanggalDibuat, &a.TanggalDiperbarui,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		// Fetch categories and tags for each article
+		a.Kategori, _ = GetArticleCategories(db, a.ArtikelID)
+		a.Tags, _ = GetArticleTags(db, a.ArtikelID)
+
+		articles = append(articles, a)
+	}
+
+	return articles, nil
+}
+
+// GetArticleByID retrieves a single article by ID
+func GetArticleByID(db *sql.DB, id int) (*Article, error) {
+	query := `
+        SELECT artikel_id, judul, slug, konten, excerpt, gambar_utama, 
+               penulis, status, user_id, tanggal_publikasi, 
+               tanggal_dibuat, tanggal_diperbarui
+        FROM articles
+        WHERE artikel_id = $1
     `
 
-    args := []interface{}{}
-    argIndex := 1
+	var a Article
+	err := db.QueryRow(query, id).Scan(
+		&a.ArtikelID, &a.Judul, &a.Slug, &a.Konten, &a.Excerpt,
+		&a.GambarUtama, &a.Penulis, &a.Status, &a.UserID,
+		&a.TanggalPublikasi, &a.TanggalDibuat, &a.TanggalDiperbarui,
+	)
+	if err != nil {
+		return nil, err
+	}
 
-    // Apply filters
-    if status != "" {
-        condition := fmt.Sprintf(" AND a.status = $%d", argIndex)
-        countQuery += condition
-        selectQuery += condition
-        args = append(args, status)
-        argIndex++
-    }
+	// Fetch related categories and tags
+	a.Kategori, _ = GetArticleCategories(db, a.ArtikelID)
+	a.Tags, _ = GetArticleTags(db, a.ArtikelID)
 
-    if categoryID != nil {
-        condition := fmt.Sprintf(` AND a.artikel_id IN (
-            SELECT artikel_id FROM artikel_kategori WHERE kategori_id = $%d
-        )`, argIndex)
-        countQuery += condition
-        selectQuery += condition
-        args = append(args, *categoryID)
-        argIndex++
-    }
-
-    // Get total count
-    var totalCount int
-    err := db.QueryRowContext(ctx, countQuery, args...).Scan(&totalCount)
-    if err != nil {
-        return nil, 0, err
-    }
-
-    // Add ordering and pagination
-    selectQuery += ` ORDER BY a.tanggal_publikasi DESC, a.created_at DESC LIMIT $%d OFFSET $%d`
-    args = append(args, limit, offset)
-
-    // Execute main query
-    rows, err := db.QueryContext(ctx, selectQuery, args...)
-    if err != nil {
-        return nil, 0, err
-    }
-    defer rows.Close()
-
-    var articles []ArticleWithAuthor
-    for rows.Next() {
-        var article ArticleWithAuthor
-        err := rows.Scan(
-            &article.ArtikelID, &article.UserID, &article.Judul, &article.Slug,
-            &article.Konten, &article.FeaturedImageURL, &article.Status,
-            &article.ViewCount, &article.TanggalPublikasi, &article.CreatedAt,
-            &article.UpdatedAt, &article.MetaTitle, &article.MetaDescription,
-            &article.AuthorUsername, &article.AuthorEmail,
-        )
-        if err != nil {
-            return nil, 0, err
-        }
-        articles = append(articles, article)
-    }
-
-    return articles, totalCount, nil
+	return &a, nil
 }
 
-func UpdateArticle(ctx context.Context, db *sql.DB, articleID int, userID int, req *ArticleRequest) (*Article, error) {
-    tx, err := db.BeginTx(ctx, nil)
-    if err != nil {
-        return nil, fmt.Errorf("failed to begin transaction: %w", err)
-    }
-    defer tx.Rollback()
+// GetArticleBySlug retrieves a single article by slug
+func GetArticleBySlug(db *sql.DB, slug string) (*Article, error) {
+	query := `
+        SELECT artikel_id, judul, slug, konten, excerpt, gambar_utama, 
+               penulis, status, user_id, tanggal_publikasi, 
+               tanggal_dibuat, tanggal_diperbarui
+        FROM articles
+        WHERE slug = $1
+    `
 
-    article, err := UpdateArticleTx(ctx, tx, articleID, userID, req)
-    if err != nil {
-        return nil, err
-    }
+	var a Article
+	err := db.QueryRow(query, slug).Scan(
+		&a.ArtikelID, &a.Judul, &a.Slug, &a.Konten, &a.Excerpt,
+		&a.GambarUtama, &a.Penulis, &a.Status, &a.UserID,
+		&a.TanggalPublikasi, &a.TanggalDibuat, &a.TanggalDiperbarui,
+	)
+	if err != nil {
+		return nil, err
+	}
 
-    if err := tx.Commit(); err != nil {
-        return nil, fmt.Errorf("failed to commit transaction: %w", err)
-    }
+	// Fetch related categories and tags
+	a.Kategori, _ = GetArticleCategories(db, a.ArtikelID)
+	a.Tags, _ = GetArticleTags(db, a.ArtikelID)
 
-    return article, nil
+	return &a, nil
 }
 
-func UpdateArticleTx(ctx context.Context, tx *sql.Tx, articleID int, userID int, req *ArticleRequest) (*Article, error) {
-    // Check if article exists and user owns it
-    var existingUserID int
-    var currentSlug string
-    err := tx.QueryRowContext(ctx, "SELECT user_id, slug FROM articles WHERE artikel_id = $1", articleID).Scan(&existingUserID, &currentSlug)
-    if err != nil {
-        if err == sql.ErrNoRows {
-            return nil, errors.New("article not found")
-        }
-        return nil, err
-    }
+// GetPublishedArticleBySlug retrieves a published article by slug (for public access)
+func GetPublishedArticleBySlug(db *sql.DB, slug string) (*Article, error) {
+	query := `
+        SELECT artikel_id, judul, slug, konten, excerpt, gambar_utama, 
+               penulis, status, user_id, tanggal_publikasi, 
+               tanggal_dibuat, tanggal_diperbarui
+        FROM articles
+        WHERE slug = $1 AND status = 'published'
+    `
 
-    if existingUserID != userID {
-        return nil, errors.New("unauthorized: you can only edit your own articles")
-    }
+	var a Article
+	err := db.QueryRow(query, slug).Scan(
+		&a.ArtikelID, &a.Judul, &a.Slug, &a.Konten, &a.Excerpt,
+		&a.GambarUtama, &a.Penulis, &a.Status, &a.UserID,
+		&a.TanggalPublikasi, &a.TanggalDibuat, &a.TanggalDiperbarui,
+	)
+	if err != nil {
+		return nil, err
+	}
 
-    // Generate new slug if title changed
-    newSlug := generateSlug(req.Judul)
-    if newSlug != currentSlug {
-        // Ensure slug uniqueness
-        originalSlug := newSlug
-        counter := 1
-        for {
-            var existingID int
-            err := tx.QueryRowContext(ctx, "SELECT artikel_id FROM articles WHERE slug = $1 AND artikel_id != $2", newSlug, articleID).Scan(&existingID)
-            if err == sql.ErrNoRows {
-                break
-            }
-            if err != nil {
-                return nil, fmt.Errorf("failed to check slug uniqueness: %w", err)
-            }
-            newSlug = fmt.Sprintf("%s-%d", originalSlug, counter)
-            counter++
-        }
-    }
+	// Fetch related categories and tags
+	a.Kategori, _ = GetArticleCategories(db, a.ArtikelID)
+	a.Tags, _ = GetArticleTags(db, a.ArtikelID)
 
-    // Set publish date if changing to published
-    var publishDate *time.Time
-    if req.Status == "published" {
-        var currentStatus string
-        var currentPublishDate *time.Time
-        err := tx.QueryRowContext(ctx, "SELECT status, tanggal_publikasi FROM articles WHERE artikel_id = $1", articleID).Scan(&currentStatus, &currentPublishDate)
-        if err != nil {
-            return nil, err
-        }
+	return &a, nil
+}
 
-        if currentStatus != "published" || currentPublishDate == nil {
-            now := time.Now()
-            publishDate = &now
-        } else {
-            publishDate = currentPublishDate
-        }
-    }
+// CreateArticle creates a new article
+func CreateArticle(db *sql.DB, input ArticleInput, userID int) (*Article, error) {
+	// Generate slug if not provided
+	slug := input.Slug
+	if slug == "" {
+		slug = GenerateSlug(input.Judul)
+	}
 
-    // Update article
-    query := `
-        UPDATE articles SET 
-            judul = $1, slug = $2, konten = $3, featured_image_url = $4,
-            status = $5, meta_title = $6, meta_description = $7, 
-            tanggal_publikasi = $8, updated_at = NOW()
+	// Ensure slug is unique
+	slug, err := EnsureUniqueSlug(db, slug, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set default status
+	status := input.Status
+	if status == "" {
+		status = "draft"
+	}
+
+	// Set penulis from input or leave NULL
+	var penulis *string
+	if input.Penulis != "" {
+		penulis = &input.Penulis
+	}
+
+	// Parse tanggal_publikasi
+	var tanggalPublikasi *time.Time
+	if input.TanggalPublikasi != "" {
+		t, err := time.Parse(time.RFC3339, input.TanggalPublikasi)
+		if err == nil {
+			tanggalPublikasi = &t
+		}
+	}
+
+	// If publishing, set tanggal_publikasi to now if not provided
+	if status == "published" && tanggalPublikasi == nil {
+		now := time.Now()
+		tanggalPublikasi = &now
+	}
+
+	query := `
+        INSERT INTO articles (judul, slug, konten, excerpt, gambar_utama, penulis, status, user_id, tanggal_publikasi)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING artikel_id, judul, slug, konten, excerpt, gambar_utama, penulis, status, user_id, tanggal_publikasi, tanggal_dibuat, tanggal_diperbarui
+    `
+
+	var a Article
+	var excerpt, gambarUtama *string
+	if input.Excerpt != "" {
+		excerpt = &input.Excerpt
+	}
+	if input.GambarUtama != "" {
+		gambarUtama = &input.GambarUtama
+	}
+
+	err = db.QueryRow(
+		query,
+		input.Judul, slug, input.Konten, excerpt, gambarUtama,
+		penulis, status, userID, tanggalPublikasi,
+	).Scan(
+		&a.ArtikelID, &a.Judul, &a.Slug, &a.Konten, &a.Excerpt,
+		&a.GambarUtama, &a.Penulis, &a.Status, &a.UserID,
+		&a.TanggalPublikasi, &a.TanggalDibuat, &a.TanggalDiperbarui,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add categories
+	if len(input.KategoriIDs) > 0 {
+		for _, katID := range input.KategoriIDs {
+			_, err := db.Exec(
+				"INSERT INTO artikel_kategori (artikel_id, kategori_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+				a.ArtikelID, katID,
+			)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	// Add tags
+	if len(input.TagIDs) > 0 {
+		for _, tagID := range input.TagIDs {
+			_, err := db.Exec(
+				"INSERT INTO artikel_tag (artikel_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+				a.ArtikelID, tagID,
+			)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	// Fetch related data
+	a.Kategori, _ = GetArticleCategories(db, a.ArtikelID)
+	a.Tags, _ = GetArticleTags(db, a.ArtikelID)
+
+	return &a, nil
+}
+
+// UpdateArticle updates an existing article
+func UpdateArticle(db *sql.DB, id int, input ArticleInput) (*Article, error) {
+	// Generate slug if provided or changed
+	slug := input.Slug
+	if slug == "" {
+		slug = GenerateSlug(input.Judul)
+	}
+
+	// Ensure slug is unique (excluding current article)
+	slug, err := EnsureUniqueSlug(db, slug, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse tanggal_publikasi
+	var tanggalPublikasi *time.Time
+	if input.TanggalPublikasi != "" {
+		t, err := time.Parse(time.RFC3339, input.TanggalPublikasi)
+		if err == nil {
+			tanggalPublikasi = &t
+		}
+	}
+
+	// If publishing for first time, set tanggal_publikasi
+	if input.Status == "published" && tanggalPublikasi == nil {
+		// Check if already published
+		var existingStatus string
+		var existingPubDate *time.Time
+		db.QueryRow("SELECT status, tanggal_publikasi FROM articles WHERE artikel_id = $1", id).Scan(&existingStatus, &existingPubDate)
+
+		if existingPubDate == nil {
+			now := time.Now()
+			tanggalPublikasi = &now
+		} else {
+			tanggalPublikasi = existingPubDate
+		}
+	}
+
+	query := `
+        UPDATE articles 
+        SET judul = $1, slug = $2, konten = $3, excerpt = $4, gambar_utama = $5, 
+            penulis = $6, status = $7, tanggal_publikasi = $8
         WHERE artikel_id = $9
-        RETURNING artikel_id, user_id, created_at, updated_at, view_count
+        RETURNING artikel_id, judul, slug, konten, excerpt, gambar_utama, penulis, status, user_id, tanggal_publikasi, tanggal_dibuat, tanggal_diperbarui
     `
 
-    var article Article
-    err = tx.QueryRowContext(ctx, query, req.Judul, newSlug, req.Konten, req.FeaturedImageURL,
-        req.Status, req.MetaTitle, req.MetaDescription, publishDate, articleID).Scan(
-        &article.ArtikelID, &article.UserID, &article.CreatedAt, &article.UpdatedAt, &article.ViewCount)
-    if err != nil {
-        return nil, err
-    }
+	var a Article
+	var excerpt, gambarUtama, penulis *string
+	if input.Excerpt != "" {
+		excerpt = &input.Excerpt
+	}
+	if input.GambarUtama != "" {
+		gambarUtama = &input.GambarUtama
+	}
+	if input.Penulis != "" {
+		penulis = &input.Penulis
+	}
 
-    // Delete existing categories and tags
-    if _, err := tx.ExecContext(ctx, "DELETE FROM artikel_kategori WHERE artikel_id = $1", articleID); err != nil {
-        return nil, err
-    }
-    if _, err := tx.ExecContext(ctx, "DELETE FROM artikel_tag WHERE artikel_id = $1", articleID); err != nil {
-        return nil, err
-    }
+	err = db.QueryRow(
+		query,
+		input.Judul, slug, input.Konten, excerpt, gambarUtama,
+		penulis, input.Status, tanggalPublikasi, id,
+	).Scan(
+		&a.ArtikelID, &a.Judul, &a.Slug, &a.Konten, &a.Excerpt,
+		&a.GambarUtama, &a.Penulis, &a.Status, &a.UserID,
+		&a.TanggalPublikasi, &a.TanggalDibuat, &a.TanggalDiperbarui,
+	)
+	if err != nil {
+		return nil, err
+	}
 
-    // Insert new categories and tags
-    if len(req.CategoryIDs) > 0 {
-        if err := insertArticleCategoriesTx(ctx, tx, articleID, req.CategoryIDs); err != nil {
-            return nil, err
-        }
-    }
-    if len(req.TagIDs) > 0 {
-        if err := insertArticleTagsTx(ctx, tx, articleID, req.TagIDs); err != nil {
-            return nil, err
-        }
-    }
+	// Update categories
+	if input.KategoriIDs != nil {
+		// Remove existing
+		db.Exec("DELETE FROM artikel_kategori WHERE artikel_id = $1", id)
+		// Add new
+		for _, katID := range input.KategoriIDs {
+			db.Exec(
+				"INSERT INTO artikel_kategori (artikel_id, kategori_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+				id, katID,
+			)
+		}
+	}
 
-    // Set article fields
-    article.Judul = req.Judul
-    article.Slug = newSlug
-    article.Konten = req.Konten
-    article.FeaturedImageURL = req.FeaturedImageURL
-    article.Status = req.Status
-    article.TanggalPublikasi = publishDate
-    article.MetaTitle = req.MetaTitle
-    article.MetaDescription = req.MetaDescription
+	// Update tags
+	if input.TagIDs != nil {
+		// Remove existing
+		db.Exec("DELETE FROM artikel_tag WHERE artikel_id = $1", id)
+		// Add new
+		for _, tagID := range input.TagIDs {
+			db.Exec(
+				"INSERT INTO artikel_tag (artikel_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+				id, tagID,
+			)
+		}
+	}
 
-    return &article, nil
+	// Fetch related data
+	a.Kategori, _ = GetArticleCategories(db, a.ArtikelID)
+	a.Tags, _ = GetArticleTags(db, a.ArtikelID)
+
+	return &a, nil
 }
 
-func DeleteArticle(ctx context.Context, db *sql.DB, articleID int, userID int) error {
-    // Check if article exists and user owns it
-    var existingUserID int
-    err := db.QueryRowContext(ctx, "SELECT user_id FROM articles WHERE artikel_id = $1", articleID).Scan(&existingUserID)
-    if err != nil {
-        if err == sql.ErrNoRows {
-            return sql.ErrNoRows
-        }
-        return err
-    }
+// DeleteArticle deletes an article by ID
+func DeleteArticle(db *sql.DB, id int) error {
+	result, err := db.Exec("DELETE FROM articles WHERE artikel_id = $1", id)
+	if err != nil {
+		return err
+	}
 
-    if existingUserID != userID {
-        return errors.New("unauthorized: you can only delete your own articles")
-    }
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
 
-    // Delete article (CASCADE will handle related tables)
-    res, err := db.ExecContext(ctx, "DELETE FROM articles WHERE artikel_id = $1", articleID)
-    if err != nil {
-        return fmt.Errorf("error deleting article ID %d: %w", articleID, err)
-    }
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
 
-    count, err := res.RowsAffected()
-    if err != nil {
-        return fmt.Errorf("error getting rows affected for article ID %d delete: %w", articleID, err)
-    }
-    if count == 0 {
-        return sql.ErrNoRows
-    }
-
-    return nil
+	return nil
 }
 
-func DeleteArticleTx(ctx context.Context, tx *sql.Tx, articleID int, userID int) error {
-    // Check if article exists and user owns it
-    var existingUserID int
-    err := tx.QueryRowContext(ctx, "SELECT user_id FROM articles WHERE artikel_id = $1", articleID).Scan(&existingUserID)
-    if err != nil {
-        if err == sql.ErrNoRows {
-            return sql.ErrNoRows
-        }
-        return err
-    }
+// GetArticleCategories retrieves categories for an article
+func GetArticleCategories(db *sql.DB, artikelID int) ([]Category, error) {
+	query := `
+        SELECT c.kategori_id, c.nama_kategori, c.deskripsi, c.created_at
+        FROM categories c
+        JOIN artikel_kategori ak ON c.kategori_id = ak.kategori_id
+        WHERE ak.artikel_id = $1
+    `
 
-    if existingUserID != userID {
-        return errors.New("unauthorized: you can only delete your own articles")
-    }
+	rows, err := db.Query(query, artikelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 
-    res, err := tx.ExecContext(ctx, "DELETE FROM articles WHERE artikel_id = $1", articleID)
-    if err != nil {
-        return fmt.Errorf("error executing delete for article ID %d in tx: %w", articleID, err)
-    }
+	var categories []Category
+	for rows.Next() {
+		var c Category
+		err := rows.Scan(&c.KategoriID, &c.NamaKategori, &c.Deskripsi, &c.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		categories = append(categories, c)
+	}
 
-    count, err := res.RowsAffected()
-    if err != nil {
-        return fmt.Errorf("error getting rows affected for article ID %d delete in tx: %w", articleID, err)
-    }
-    if count == 0 {
-        return sql.ErrNoRows
-    }
-
-    return nil
+	return categories, nil
 }
 
-// Helper functions
-func insertArticleCategoriesTx(ctx context.Context, tx *sql.Tx, articleID int, categoryIDs []int) error {
-    if len(categoryIDs) == 0 {
-        return nil
-    }
+// GetArticleTags retrieves tags for an article
+func GetArticleTags(db *sql.DB, artikelID int) ([]Tag, error) {
+	query := `
+        SELECT t.tag_id, t.nama_tag, t.created_at
+        FROM tags t
+        JOIN artikel_tag at ON t.tag_id = at.tag_id
+        WHERE at.artikel_id = $1
+    `
 
-    query := "INSERT INTO artikel_kategori (artikel_id, kategori_id) VALUES "
-    values := []interface{}{}
-    placeholders := []string{}
+	rows, err := db.Query(query, artikelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 
-    for i, categoryID := range categoryIDs {
-        placeholders = append(placeholders, fmt.Sprintf("($%d, $%d)", i*2+1, i*2+2))
-        values = append(values, articleID, categoryID)
-    }
+	var tags []Tag
+	for rows.Next() {
+		var t Tag
+		err := rows.Scan(&t.TagID, &t.NamaTag, &t.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		tags = append(tags, t)
+	}
 
-    query += strings.Join(placeholders, ", ")
-    _, err := tx.ExecContext(ctx, query, values...)
-    return err
+	return tags, nil
 }
 
-func insertArticleTagsTx(ctx context.Context, tx *sql.Tx, articleID int, tagIDs []int) error {
-    if len(tagIDs) == 0 {
-        return nil
-    }
-
-    query := "INSERT INTO artikel_tag (artikel_id, tag_id) VALUES "
-    values := []interface{}{}
-    placeholders := []string{}
-
-    for i, tagID := range tagIDs {
-        placeholders = append(placeholders, fmt.Sprintf("($%d, $%d)", i*2+1, i*2+2))
-        values = append(values, articleID, tagID)
-    }
-
-    query += strings.Join(placeholders, ", ")
-    _, err := tx.ExecContext(ctx, query, values...)
-    return err
+// GetArticlesByCategory retrieves articles by category ID
+func GetArticlesByCategory(db *sql.DB, kategoriID int, limit int, offset int) ([]Article, error) {
+	filter := ArticleFilter{
+		Status:     "published",
+		KategoriID: kategoriID,
+		Limit:      limit,
+		Offset:     offset,
+	}
+	return GetAllArticles(db, filter)
 }
 
-func incrementViewCount(db *sql.DB, articleID int) {
-    query := "UPDATE articles SET view_count = view_count + 1 WHERE artikel_id = $1"
-    db.Exec(query, articleID)
-}
-
-func generateSlug(title string) string {
-    // Convert to lowercase
-    slug := strings.ToLower(title)
-    
-    // Remove special characters and replace spaces
-    var result strings.Builder
-    for _, r := range slug {
-        if unicode.IsLetter(r) || unicode.IsDigit(r) {
-            result.WriteRune(r)
-        } else if unicode.IsSpace(r) || r == '-' {
-            result.WriteRune('-')
-        }
-    }
-    
-    // Clean up multiple dashes and trim
-    slug = result.String()
-    slug = strings.ReplaceAll(slug, "--", "-")
-    slug = strings.Trim(slug, "-")
-    
-    // Limit length
-    if len(slug) > 100 {
-        slug = slug[:100]
-        slug = strings.Trim(slug, "-")
-    }
-    
-    return slug
+// GetArticlesByTag retrieves articles by tag ID
+func GetArticlesByTag(db *sql.DB, tagID int, limit int, offset int) ([]Article, error) {
+	filter := ArticleFilter{
+		Status: "published",
+		TagID:  tagID,
+		Limit:  limit,
+		Offset: offset,
+	}
+	return GetAllArticles(db, filter)
 }
