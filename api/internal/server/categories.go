@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"news-portal/api/internal/database"
+	"news-portal-web/api/internal/database"
 
 	"github.com/gorilla/mux"
 )
@@ -53,38 +53,30 @@ func (s *Server) handleCreateCategory() http.HandlerFunc {
 	}
 }
 
-func (s *Server) handleGetCategory() http.HandlerFunc {
+func (s *Server) handleGetCategoryByID() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		vars := mux.Vars(r)
-		categoryIDStr := vars["id"]
-
-		if categoryIDStr != "" {
-			categoryID, err := strconv.Atoi(categoryIDStr)
-			if err != nil {
-				writeJSONError(w, "Invalid category ID", http.StatusBadRequest)
-				return
-			}
-
-			category, err := database.GetCategoryByID(r.Context(), s.GetDB(), categoryID)
-			if err != nil {
-				if errors.Is(err, sql.ErrNoRows) || strings.Contains(err.Error(), "not found") {
-					writeJSONError(w, "Category not found", http.StatusNotFound)
-				} else {
-					writeJSONError(w, "Failed to get category: "+err.Error(), http.StatusInternalServerError)
-				}
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(category)
+		categoryID, err := strconv.Atoi(mux.Vars(r)["id"])
+		if err != nil {
+			writeJSONError(w, "Invalid category ID", http.StatusBadRequest)
 			return
 		}
 
-		// List all categories
-		s.handleListCategories()(w, r)
+		category, err := database.GetCategoryByID(r.Context(), s.GetDB(), categoryID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) || strings.Contains(err.Error(), "not found") {
+				writeJSONError(w, "Category not found", http.StatusNotFound)
+			} else {
+				writeJSONError(w, "Failed to get category: "+err.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(category)
 	}
 }
 
-func (s *Server) handleListCategories() http.HandlerFunc {
+func (s *Server) handleGetCategories() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Check if requesting categories with article count
 		withCount := r.URL.Query().Get("with_count")
@@ -202,8 +194,8 @@ func (s *Server) handleDeleteCategory() http.HandlerFunc {
 
 func (s *Server) RegisterCategoryRoutes(r *mux.Router) {
 	// Public routes
-	r.HandleFunc("/", s.handleGetCategory()).Methods("GET")
-	r.HandleFunc("/{id:[0-9]+}", s.handleGetCategory()).Methods("GET")
+	r.HandleFunc("/", s.handleGetCategories()).Methods("GET")
+	r.HandleFunc("/{id:[0-9]+}", s.handleGetCategoryByID()).Methods("GET")
 
 	// Protected routes (requires authentication)
 	r.HandleFunc("/", s.handleCreateCategory()).Methods("POST")
@@ -224,4 +216,21 @@ func validateCategoryRequest(req *database.CategoryRequest) error {
 	req.NamaKategori = strings.TrimSpace(req.NamaKategori)
 
 	return nil
+}
+
+// ========================================
+// ROUTE REGISTRATION
+// ========================================
+
+// RegisterPublicCategoryRoutes registers public category routes
+func (s *Server) RegisterPublicCategoryRoutes(r *mux.Router) {
+	r.HandleFunc("/categories", s.handleGetCategories()).Methods("GET")
+	r.HandleFunc("/categories/{id:[0-9]+}", s.handleGetCategoryByID()).Methods("GET")
+}
+
+// RegisterAdminCategoryRoutes registers admin category routes
+func (s *Server) RegisterAdminCategoryRoutes(r *mux.Router) {
+	r.HandleFunc("/categories", s.handleCreateCategory()).Methods("POST")
+	r.HandleFunc("/categories/{id:[0-9]+}", s.handleUpdateCategory()).Methods("PUT")
+	r.HandleFunc("/categories/{id:[0-9]+}", s.handleDeleteCategory()).Methods("DELETE")
 }

@@ -5,28 +5,36 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 )
 
 type Category struct {
-	KategoriID   int    `json:"kategori_id"`
-	NamaKategori string `json:"nama_kategori"`
-	CreatedAt    string `json:"created_at"`
+	KategoriID   int       `json:"kategori_id"`
+	NamaKategori string    `json:"nama_kategori"`
+	Deskripsi    *string   `json:"deskripsi,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 type CategoryRequest struct {
 	NamaKategori string `json:"nama_kategori"`
+	Deskripsi    string `json:"deskripsi,omitempty"`
 }
 
 func CreateCategory(ctx context.Context, db *sql.DB, req *CategoryRequest) (*Category, error) {
 	query := `
-        INSERT INTO categories (nama_kategori, created_at)
-        VALUES ($1, NOW())
-        RETURNING kategori_id, nama_kategori, created_at
+        INSERT INTO categories (nama_kategori, deskripsi, created_at)
+        VALUES ($1, $2, NOW())
+        RETURNING kategori_id, nama_kategori, deskripsi, created_at
     `
 
+	var deskripsi *string
+	if req.Deskripsi != "" {
+		deskripsi = &req.Deskripsi
+	}
+
 	var category Category
-	err := db.QueryRowContext(ctx, query, req.NamaKategori).Scan(
-		&category.KategoriID, &category.NamaKategori, &category.CreatedAt)
+	err := db.QueryRowContext(ctx, query, req.NamaKategori, deskripsi).Scan(
+		&category.KategoriID, &category.NamaKategori, &category.Deskripsi, &category.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create category: %w", err)
 	}
@@ -36,14 +44,19 @@ func CreateCategory(ctx context.Context, db *sql.DB, req *CategoryRequest) (*Cat
 
 func CreateCategoryTx(ctx context.Context, tx *sql.Tx, req *CategoryRequest) (*Category, error) {
 	query := `
-        INSERT INTO categories (nama_kategori, created_at)
-        VALUES ($1, NOW())
-        RETURNING kategori_id, nama_kategori, created_at
+        INSERT INTO categories (nama_kategori, deskripsi, created_at)
+        VALUES ($1, $2, NOW())
+        RETURNING kategori_id, nama_kategori, deskripsi, created_at
     `
 
+	var deskripsi *string
+	if req.Deskripsi != "" {
+		deskripsi = &req.Deskripsi
+	}
+
 	var category Category
-	err := tx.QueryRowContext(ctx, query, req.NamaKategori).Scan(
-		&category.KategoriID, &category.NamaKategori, &category.CreatedAt)
+	err := tx.QueryRowContext(ctx, query, req.NamaKategori, deskripsi).Scan(
+		&category.KategoriID, &category.NamaKategori, &category.Deskripsi, &category.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create category: %w", err)
 	}
@@ -53,14 +66,14 @@ func CreateCategoryTx(ctx context.Context, tx *sql.Tx, req *CategoryRequest) (*C
 
 func GetCategoryByID(ctx context.Context, db *sql.DB, categoryID int) (*Category, error) {
 	query := `
-        SELECT kategori_id, nama_kategori, created_at
+        SELECT kategori_id, nama_kategori, deskripsi, created_at
         FROM categories
         WHERE kategori_id = $1
     `
 
 	var category Category
 	err := db.QueryRowContext(ctx, query, categoryID).Scan(
-		&category.KategoriID, &category.NamaKategori, &category.CreatedAt)
+		&category.KategoriID, &category.NamaKategori, &category.Deskripsi, &category.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, errors.New("category not found")
@@ -73,14 +86,14 @@ func GetCategoryByID(ctx context.Context, db *sql.DB, categoryID int) (*Category
 
 func GetCategoryByName(ctx context.Context, db *sql.DB, name string) (*Category, error) {
 	query := `
-        SELECT kategori_id, nama_kategori, created_at
+        SELECT kategori_id, nama_kategori, deskripsi, created_at
         FROM categories
-        WHERE nama_kategori = $1
+        WHERE LOWER(nama_kategori) = LOWER($1)
     `
 
 	var category Category
 	err := db.QueryRowContext(ctx, query, name).Scan(
-		&category.KategoriID, &category.NamaKategori, &category.CreatedAt)
+		&category.KategoriID, &category.NamaKategori, &category.Deskripsi, &category.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, errors.New("category not found")
@@ -93,7 +106,7 @@ func GetCategoryByName(ctx context.Context, db *sql.DB, name string) (*Category,
 
 func ListCategories(ctx context.Context, db *sql.DB) ([]Category, error) {
 	query := `
-        SELECT kategori_id, nama_kategori, created_at
+        SELECT kategori_id, nama_kategori, deskripsi, created_at
         FROM categories
         ORDER BY nama_kategori ASC
     `
@@ -107,7 +120,7 @@ func ListCategories(ctx context.Context, db *sql.DB) ([]Category, error) {
 	var categories []Category
 	for rows.Next() {
 		var category Category
-		err := rows.Scan(&category.KategoriID, &category.NamaKategori, &category.CreatedAt)
+		err := rows.Scan(&category.KategoriID, &category.NamaKategori, &category.Deskripsi, &category.CreatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -119,12 +132,12 @@ func ListCategories(ctx context.Context, db *sql.DB) ([]Category, error) {
 
 func ListCategoriesWithArticleCount(ctx context.Context, db *sql.DB) ([]map[string]interface{}, error) {
 	query := `
-        SELECT c.kategori_id, c.nama_kategori, c.created_at,
+        SELECT c.kategori_id, c.nama_kategori, c.deskripsi, c.created_at,
                COUNT(ak.artikel_id) as article_count
         FROM categories c
         LEFT JOIN artikel_kategori ak ON c.kategori_id = ak.kategori_id
         LEFT JOIN articles a ON ak.artikel_id = a.artikel_id AND a.status = 'published'
-        GROUP BY c.kategori_id, c.nama_kategori, c.created_at
+        GROUP BY c.kategori_id, c.nama_kategori, c.deskripsi, c.created_at
         ORDER BY c.nama_kategori ASC
     `
 
@@ -137,10 +150,10 @@ func ListCategoriesWithArticleCount(ctx context.Context, db *sql.DB) ([]map[stri
 	var categories []map[string]interface{}
 	for rows.Next() {
 		var kategoriID int
-		var namaKategori, createdAt string
+		var namaKategori, deskripsi, createdAt string
 		var articleCount int
 
-		err := rows.Scan(&kategoriID, &namaKategori, &createdAt, &articleCount)
+		err := rows.Scan(&kategoriID, &namaKategori, &deskripsi, &createdAt, &articleCount)
 		if err != nil {
 			return nil, err
 		}
@@ -148,6 +161,7 @@ func ListCategoriesWithArticleCount(ctx context.Context, db *sql.DB) ([]map[stri
 		category := map[string]interface{}{
 			"kategori_id":   kategoriID,
 			"nama_kategori": namaKategori,
+			"deskripsi":     deskripsi,
 			"created_at":    createdAt,
 			"article_count": articleCount,
 		}
@@ -159,15 +173,20 @@ func ListCategoriesWithArticleCount(ctx context.Context, db *sql.DB) ([]map[stri
 
 func UpdateCategory(ctx context.Context, db *sql.DB, categoryID int, req *CategoryRequest) (*Category, error) {
 	query := `
-        UPDATE categories 
-        SET nama_kategori = $1
-        WHERE kategori_id = $2
-        RETURNING kategori_id, nama_kategori, created_at
+        UPDATE categories
+        SET nama_kategori = $1, deskripsi = $2
+        WHERE kategori_id = $3
+        RETURNING kategori_id, nama_kategori, deskripsi, created_at
     `
 
+	var deskripsi *string
+	if req.Deskripsi != "" {
+		deskripsi = &req.Deskripsi
+	}
+
 	var category Category
-	err := db.QueryRowContext(ctx, query, req.NamaKategori, categoryID).Scan(
-		&category.KategoriID, &category.NamaKategori, &category.CreatedAt)
+	err := db.QueryRowContext(ctx, query, req.NamaKategori, deskripsi, categoryID).Scan(
+		&category.KategoriID, &category.NamaKategori, &category.Deskripsi, &category.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, errors.New("category not found")
@@ -180,15 +199,20 @@ func UpdateCategory(ctx context.Context, db *sql.DB, categoryID int, req *Catego
 
 func UpdateCategoryTx(ctx context.Context, tx *sql.Tx, categoryID int, req *CategoryRequest) (*Category, error) {
 	query := `
-        UPDATE categories 
-        SET nama_kategori = $1
-        WHERE kategori_id = $2
-        RETURNING kategori_id, nama_kategori, created_at
+        UPDATE categories
+        SET nama_kategori = $1, deskripsi = $2
+        WHERE kategori_id = $3
+        RETURNING kategori_id, nama_kategori, deskripsi, created_at
     `
 
+	var deskripsi *string
+	if req.Deskripsi != "" {
+		deskripsi = &req.Deskripsi
+	}
+
 	var category Category
-	err := tx.QueryRowContext(ctx, query, req.NamaKategori, categoryID).Scan(
-		&category.KategoriID, &category.NamaKategori, &category.CreatedAt)
+	err := tx.QueryRowContext(ctx, query, req.NamaKategori, deskripsi, categoryID).Scan(
+		&category.KategoriID, &category.NamaKategori, &category.Deskripsi, &category.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, errors.New("category not found")
