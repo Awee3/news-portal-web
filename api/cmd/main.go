@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"news-portal/api/internal/server"
+	"news-portal-web/api/internal/server"
 
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
