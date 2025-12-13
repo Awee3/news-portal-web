@@ -2,22 +2,26 @@ package server
 
 import (
 	"encoding/json"
-	// "errors"
 	"net/http"
 	"strconv"
 	"strings"
 
-	"news-portal/api/internal/auth"
-	"news-portal/api/internal/database"
+	"news-portal-web/api/internal/auth"
+	"news-portal-web/api/internal/database"
 
 	"github.com/gorilla/mux"
 )
 
+// ========================================
+// AUTH HANDLERS
+// ========================================
+
+// handleLogin - POST /api/v1/auth/login
 func (s *Server) handleLogin() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req database.LoginRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeJSONError(w, "Invalid request payload: "+err.Error(), http.StatusBadRequest)
+			writeJSONError(w, "Invalid request payload", http.StatusBadRequest)
 			return
 		}
 
@@ -28,29 +32,26 @@ func (s *Server) handleLogin() http.HandlerFunc {
 
 		user, err := database.AuthenticateUser(r.Context(), s.GetDB(), &req)
 		if err != nil {
-			writeJSONError(w, "Invalid email or password", http.StatusUnauthorized)
+			writeJSONError(w, "Email atau password salah", http.StatusUnauthorized)
 			return
 		}
 
 		// Generate JWT tokens
-		tokenPair, err := s.jwtManager.GenerateTokenPair(user)
+		jwtManager := s.GetJWTManager()
+		if jwtManager == nil {
+			writeJSONError(w, "JWT manager not configured", http.StatusInternalServerError)
+			return
+		}
+
+		tokenPair, err := jwtManager.GenerateTokenPair(user.UserID, user.Username, user.Email, user.Role)
 		if err != nil {
 			writeJSONError(w, "Failed to generate tokens", http.StatusInternalServerError)
 			return
 		}
 
-		// User profile without password
-		profile := database.UserProfile{
-			UserID:    user.UserID,
-			Username:  user.Username,
-			Email:     user.Email,
-			Role:      user.Role,
-			CreatedAt: user.CreatedAt,
-		}
-
 		response := map[string]interface{}{
-			"message": "Login successful",
-			"user":    profile,
+			"message": "Login berhasil",
+			"user":    user.ToPublic(),
 			"tokens":  tokenPair,
 		}
 
@@ -60,11 +61,12 @@ func (s *Server) handleLogin() http.HandlerFunc {
 	}
 }
 
+// handleRegister - POST /api/v1/auth/register
 func (s *Server) handleRegister() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req database.UserRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeJSONError(w, "Invalid request payload: "+err.Error(), http.StatusBadRequest)
+			writeJSONError(w, "Invalid request payload", http.StatusBadRequest)
 			return
 		}
 
@@ -73,62 +75,59 @@ func (s *Server) handleRegister() http.HandlerFunc {
 			return
 		}
 
-		// Set default role to "user" for registration
+		// Default role
 		if req.Role == "" {
 			req.Role = "user"
 		}
 
-		// Check if email already exists
+		// Check email exists
 		emailExists, err := database.IsEmailExists(r.Context(), s.GetDB(), req.Email)
 		if err != nil {
-			writeJSONError(w, "Failed to check email existence: "+err.Error(), http.StatusInternalServerError)
+			writeJSONError(w, "Error checking email", http.StatusInternalServerError)
 			return
 		}
 		if emailExists {
-			writeJSONError(w, "Email already exists", http.StatusConflict)
+			writeJSONError(w, "Email sudah terdaftar", http.StatusConflict)
 			return
 		}
 
-		// Check if username already exists
+		// Check username exists
 		usernameExists, err := database.IsUsernameExists(r.Context(), s.GetDB(), req.Username)
 		if err != nil {
-			writeJSONError(w, "Failed to check username existence: "+err.Error(), http.StatusInternalServerError)
+			writeJSONError(w, "Error checking username", http.StatusInternalServerError)
 			return
 		}
 		if usernameExists {
-			writeJSONError(w, "Username already exists", http.StatusConflict)
+			writeJSONError(w, "Username sudah digunakan", http.StatusConflict)
 			return
 		}
 
 		user, err := database.CreateUser(r.Context(), s.GetDB(), &req)
 		if err != nil {
 			if strings.Contains(err.Error(), "duplicate") {
-				writeJSONError(w, "Email or username already exists", http.StatusConflict)
+				writeJSONError(w, "Email atau username sudah terdaftar", http.StatusConflict)
 				return
 			}
-			writeJSONError(w, "Failed to create user: "+err.Error(), http.StatusInternalServerError)
+			writeJSONError(w, "Gagal membuat user", http.StatusInternalServerError)
 			return
 		}
 
-		// Generate JWT tokens for new user
-		tokenPair, err := s.jwtManager.GenerateTokenPair(user)
+		// Generate JWT tokens
+		jwtManager := s.GetJWTManager()
+		if jwtManager == nil {
+			writeJSONError(w, "JWT manager not configured", http.StatusInternalServerError)
+			return
+		}
+
+		tokenPair, err := jwtManager.GenerateTokenPair(user.UserID, user.Username, user.Email, user.Role)
 		if err != nil {
-			writeJSONError(w, "User created but failed to generate tokens", http.StatusInternalServerError)
+			writeJSONError(w, "Failed to generate tokens", http.StatusInternalServerError)
 			return
-		}
-
-		// User profile without password
-		profile := database.UserProfile{
-			UserID:    user.UserID,
-			Username:  user.Username,
-			Email:     user.Email,
-			Role:      user.Role,
-			CreatedAt: user.CreatedAt,
 		}
 
 		response := map[string]interface{}{
-			"message": "Registration successful",
-			"user":    profile,
+			"message": "Registrasi berhasil",
+			"user":    user.ToPublic(),
 			"tokens":  tokenPair,
 		}
 
@@ -138,6 +137,7 @@ func (s *Server) handleRegister() http.HandlerFunc {
 	}
 }
 
+// handleRefreshToken - POST /api/v1/auth/refresh
 func (s *Server) handleRefreshToken() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
@@ -150,14 +150,20 @@ func (s *Server) handleRefreshToken() http.HandlerFunc {
 		}
 
 		if req.RefreshToken == "" {
-			writeJSONError(w, "Refresh token is required", http.StatusBadRequest)
+			writeJSONError(w, "Refresh token harus diisi", http.StatusBadRequest)
 			return
 		}
 
-		// Validate refresh token and get user ID
-		claims, err := s.jwtManager.ValidateRefreshToken(req.RefreshToken)
+		jwtManager := s.GetJWTManager()
+		if jwtManager == nil {
+			writeJSONError(w, "JWT manager not configured", http.StatusInternalServerError)
+			return
+		}
+
+		// Validate refresh token
+		claims, err := jwtManager.ValidateRefreshToken(req.RefreshToken)
 		if err != nil {
-			writeJSONError(w, "Invalid refresh token", http.StatusUnauthorized)
+			writeJSONError(w, "Refresh token tidak valid", http.StatusUnauthorized)
 			return
 		}
 
@@ -170,12 +176,12 @@ func (s *Server) handleRefreshToken() http.HandlerFunc {
 
 		user, err := database.GetUserByID(r.Context(), s.GetDB(), userID)
 		if err != nil {
-			writeJSONError(w, "User not found", http.StatusNotFound)
+			writeJSONError(w, "User tidak ditemukan", http.StatusNotFound)
 			return
 		}
 
 		// Generate new token pair
-		tokenPair, err := s.jwtManager.RefreshAccessToken(req.RefreshToken, user)
+		tokenPair, err := jwtManager.GenerateTokenPair(user.UserID, user.Username, user.Email, user.Role)
 		if err != nil {
 			writeJSONError(w, "Failed to refresh token", http.StatusInternalServerError)
 			return
@@ -186,31 +192,33 @@ func (s *Server) handleRefreshToken() http.HandlerFunc {
 	}
 }
 
+// handleLogout - POST /api/v1/auth/logout
 func (s *Server) handleLogout() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Get token from header to revoke it
+		// Get token from header
 		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			writeJSONError(w, "No token to revoke", http.StatusBadRequest)
+		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+			writeJSONError(w, "Token tidak ditemukan", http.StatusBadRequest)
 			return
 		}
 
-		if len(authHeader) < 8 || authHeader[:7] != "Bearer " {
-			writeJSONError(w, "Invalid authorization header format", http.StatusBadRequest)
+		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+
+		jwtManager := s.GetJWTManager()
+		if jwtManager == nil {
+			writeJSONError(w, "JWT manager not configured", http.StatusInternalServerError)
 			return
 		}
 
-		tokenString := authHeader[7:] // Remove "Bearer " prefix
-
-		// Revoke token (add to blacklist)
-		if err := s.jwtManager.RevokeToken(tokenString); err != nil {
-			writeJSONError(w, "Failed to revoke token", http.StatusInternalServerError)
+		// Revoke token
+		if err := jwtManager.RevokeToken(tokenString); err != nil {
+			writeJSONError(w, "Gagal logout", http.StatusInternalServerError)
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{
-			"message": "Logged out successfully",
+			"message": "Logout berhasil",
 		})
 	}
 }
@@ -218,25 +226,24 @@ func (s *Server) handleLogout() http.HandlerFunc {
 func (s *Server) handleGetProfile() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Get user ID from context (set by auth middleware)
-		userID, ok := r.Context().Value(auth.UserIDKey).(*int)
+		userID, ok := r.Context().Value(auth.UserIDKey).(int)
 		if !ok {
-			writeJSONError(w, "Unauthorized", http.StatusUnauthorized)
-			return
+			// Try pointer version
+			userIDPtr, ok := r.Context().Value(auth.UserIDKey).(*int)
+			if !ok || userIDPtr == nil {
+				writeJSONError(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			userID = *userIDPtr
 		}
 
-		user, err := database.GetUserByID(r.Context(), s.GetDB(), *userID)
+		user, err := database.GetUserByID(r.Context(), s.GetDB(), userID)
 		if err != nil {
 			writeJSONError(w, "User not found", http.StatusNotFound)
 			return
 		}
 
-		profile := database.UserProfile{
-			UserID:    user.UserID,
-			Username:  user.Username,
-			Email:     user.Email,
-			Role:      user.Role,
-			CreatedAt: user.CreatedAt,
-		}
+		profile := user.ToProfile()
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(profile)
@@ -246,10 +253,14 @@ func (s *Server) handleGetProfile() http.HandlerFunc {
 func (s *Server) handleUpdateProfile() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Get user ID from context
-		userID, ok := r.Context().Value(auth.UserIDKey).(*int)
+		userID, ok := r.Context().Value(auth.UserIDKey).(int)
 		if !ok {
-			writeJSONError(w, "Unauthorized", http.StatusUnauthorized)
-			return
+			userIDPtr, ok := r.Context().Value(auth.UserIDKey).(*int)
+			if !ok || userIDPtr == nil {
+				writeJSONError(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			userID = *userIDPtr
 		}
 
 		var req database.UserUpdateRequest
@@ -266,7 +277,7 @@ func (s *Server) handleUpdateProfile() http.HandlerFunc {
 		// Check if new email already exists (excluding current user)
 		if req.Email != "" {
 			existing, err := database.GetUserByEmail(r.Context(), s.GetDB(), req.Email)
-			if err == nil && existing.UserID != *userID {
+			if err == nil && existing.UserID != userID {
 				writeJSONError(w, "Email already exists", http.StatusConflict)
 				return
 			}
@@ -275,7 +286,7 @@ func (s *Server) handleUpdateProfile() http.HandlerFunc {
 		// Check if new username already exists (excluding current user)
 		if req.Username != "" {
 			existing, err := database.GetUserByUsername(r.Context(), s.GetDB(), req.Username)
-			if err == nil && existing.UserID != *userID {
+			if err == nil && existing.UserID != userID {
 				writeJSONError(w, "Username already exists", http.StatusConflict)
 				return
 			}
@@ -284,7 +295,7 @@ func (s *Server) handleUpdateProfile() http.HandlerFunc {
 		// Users can't change their own role
 		req.Role = ""
 
-		user, err := database.UpdateUser(r.Context(), s.GetDB(), *userID, &req)
+		user, err := database.UpdateUser(r.Context(), s.GetDB(), userID, &req)
 		if err != nil {
 			if strings.Contains(err.Error(), "not found") {
 				writeJSONError(w, "User not found", http.StatusNotFound)
@@ -298,13 +309,7 @@ func (s *Server) handleUpdateProfile() http.HandlerFunc {
 			return
 		}
 
-		profile := database.UserProfile{
-			UserID:    user.UserID,
-			Username:  user.Username,
-			Email:     user.Email,
-			Role:      user.Role,
-			CreatedAt: user.CreatedAt,
-		}
+		profile := user.ToProfile()
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -312,60 +317,32 @@ func (s *Server) handleUpdateProfile() http.HandlerFunc {
 	}
 }
 
-func (s *Server) handleChangePassword() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// Get user ID from context
-		userID, ok := r.Context().Value(auth.UserIDKey).(*int)
-		if !ok {
-			writeJSONError(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
+// ========================================
+// CHANGE PASSWORD HANDLER
+// ========================================
 
-		var req database.PasswordChangeRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			writeJSONError(w, "Invalid request payload: "+err.Error(), http.StatusBadRequest)
-			return
-		}
+// ChangePasswordRequest - Request body untuk ganti password
 
-		if err := validatePasswordChangeRequest(&req); err != nil {
-			writeJSONError(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		if err := database.ChangePassword(r.Context(), s.GetDB(), *userID, &req); err != nil {
-			if strings.Contains(err.Error(), "not found") {
-				writeJSONError(w, "User not found", http.StatusNotFound)
-				return
-			}
-			if strings.Contains(err.Error(), "incorrect") {
-				writeJSONError(w, "Current password is incorrect", http.StatusBadRequest)
-				return
-			}
-			writeJSONError(w, "Failed to change password: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{
-			"message": "Password changed successfully",
-		})
-	}
-}
+// ========================================
+// ROUTE REGISTRATION
+// ========================================
 
 func (s *Server) RegisterAuthRoutes(router *mux.Router) {
-    authRouter := router.PathPrefix("/auth").Subrouter()
+	authRouter := router.PathPrefix("/auth").Subrouter()
 
-    // Public auth routes
-    authRouter.HandleFunc("/register", s.handleRegister()).Methods("POST")
-    authRouter.HandleFunc("/login", s.handleLogin()).Methods("POST")
-    authRouter.HandleFunc("/refresh", s.handleRefreshToken()).Methods("POST")
+	// Public auth routes
+	authRouter.HandleFunc("/register", s.handleRegister()).Methods("POST")
+	authRouter.HandleFunc("/login", s.handleLogin()).Methods("POST")
+	authRouter.HandleFunc("/refresh", s.handleRefreshToken()).Methods("POST")
 
-    // Protected auth routes
-    protectedAuthRouter := authRouter.PathPrefix("").Subrouter()
-    protectedAuthRouter.Use(s.jwtManager.AuthMiddleware)
-    protectedAuthRouter.HandleFunc("/logout", s.handleLogout()).Methods("POST")
-    protectedAuthRouter.HandleFunc("/profile", s.handleGetProfile()).Methods("GET")
-    protectedAuthRouter.HandleFunc("/profile", s.handleUpdateProfile()).Methods("PUT")
-    protectedAuthRouter.HandleFunc("/change-password", s.handleChangePassword()).Methods("POST")
+	// Protected auth routes
+	jwtManager := s.GetJWTManager()
+	if jwtManager != nil {
+		protectedAuthRouter := authRouter.PathPrefix("").Subrouter()
+		protectedAuthRouter.Use(auth.AuthMiddleware(jwtManager))
+		protectedAuthRouter.HandleFunc("/logout", s.handleLogout()).Methods("POST")
+		protectedAuthRouter.HandleFunc("/profile", s.handleGetProfile()).Methods("GET")
+		protectedAuthRouter.HandleFunc("/profile", s.handleUpdateProfile()).Methods("PUT")
+		protectedAuthRouter.HandleFunc("/change-password", s.handleChangePassword()).Methods("POST")
+	}
 }
