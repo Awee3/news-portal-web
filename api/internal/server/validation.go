@@ -2,35 +2,57 @@ package server
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 
-	"news-portal/api/internal/database"
+	"news-portal-web/api/internal/database"
 )
 
-func validateLoginRequest(req *database.LoginRequest) error {
-	if len(strings.TrimSpace(req.Email)) == 0 {
-		return errors.New("email is required")
+// ========================================
+// EMAIL VALIDATION
+// ========================================
+
+// isValidEmail validates email format
+func isValidEmail(email string) bool {
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return false
 	}
 
-	if len(req.Password) == 0 {
-		return errors.New("password is required")
-	}
-
-	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
-
-	return nil
+	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+	return emailRegex.MatchString(email)
 }
 
-func validateUserRequest(req *database.UserRequest) error {
-	if len(strings.TrimSpace(req.Username)) == 0 {
-		return errors.New("username is required")
-	}
+// ========================================
+// ROLE VALIDATION
+// ========================================
 
-	if len(req.Username) < 3 || len(req.Username) > 30 {
-		return errors.New("username must be between 3 and 30 characters")
-	}
+// isValidRole validates user role
+func isValidRole(role string) bool {
+	return role == "admin" || role == "editor" || role == "user"
+}
 
-	if len(strings.TrimSpace(req.Email)) == 0 {
+// ========================================
+// STATUS VALIDATION
+// ========================================
+
+// isValidArticleStatus validates article status
+func isValidArticleStatus(status string) bool {
+	return status == "draft" || status == "published" || status == "archived"
+}
+
+// isValidCommentStatus validates comment status
+func isValidCommentStatus(status string) bool {
+	return status == "pending" || status == "approved" || status == "rejected"
+}
+
+// ========================================
+// REQUEST VALIDATION
+// ========================================
+
+// validateLoginRequest validates login request
+func validateLoginRequest(req *database.LoginRequest) error {
+	if req.Email == "" {
 		return errors.New("email is required")
 	}
 
@@ -38,69 +60,88 @@ func validateUserRequest(req *database.UserRequest) error {
 		return errors.New("invalid email format")
 	}
 
-	if len(req.Password) < 6 {
-		return errors.New("password must be at least 6 characters")
+	if req.Password == "" {
+		return errors.New("password is required")
 	}
-
-	if req.Role != "" && !isValidRole(req.Role) {
-		return errors.New("role must be one of: admin, editor, user")
-	}
-
-	// Trim spaces and normalize
-	req.Username = strings.TrimSpace(req.Username)
-	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
 
 	return nil
 }
 
+// validateUserRequest validates user registration request
+func validateUserRequest(req *database.UserRequest) error {
+	if req.Username == "" {
+		return errors.New("username is required")
+	}
+
+	if len(req.Username) < 3 {
+		return errors.New("username must be at least 3 characters")
+	}
+
+	if len(req.Username) > 50 {
+		return errors.New("username must be at most 50 characters")
+	}
+
+	if req.Email == "" {
+		return errors.New("email is required")
+	}
+
+	if !isValidEmail(req.Email) {
+		return errors.New("invalid email format")
+	}
+
+	if req.Password == "" {
+		return errors.New("password is required")
+	}
+
+	if len(req.Password) < 8 {
+		return errors.New("password must be at least 8 characters")
+	}
+
+	if req.Role != "" && !isValidRole(req.Role) {
+		return errors.New("invalid role (must be admin, editor, or user)")
+	}
+
+	return nil
+}
+
+// validateUserUpdateRequest validates user update request
 func validateUserUpdateRequest(req *database.UserUpdateRequest) error {
-	if req.Username != "" {
-		if len(req.Username) < 3 || len(req.Username) > 30 {
-			return errors.New("username must be between 3 and 30 characters")
-		}
-		req.Username = strings.TrimSpace(req.Username)
+	if req.Username != "" && len(req.Username) < 3 {
+		return errors.New("username must be at least 3 characters")
 	}
 
-	if req.Email != "" {
-		if !isValidEmail(req.Email) {
-			return errors.New("invalid email format")
-		}
-		req.Email = strings.TrimSpace(strings.ToLower(req.Email))
+	if req.Username != "" && len(req.Username) > 50 {
+		return errors.New("username must be at most 50 characters")
+	}
+
+	if req.Email != "" && !isValidEmail(req.Email) {
+		return errors.New("invalid email format")
+	}
+
+	if req.Password != "" && len(req.Password) < 8 {
+		return errors.New("password must be at least 8 characters")
 	}
 
 	if req.Role != "" && !isValidRole(req.Role) {
-		return errors.New("role must be one of: admin, editor, user")
+		return errors.New("invalid role (must be admin, editor, or user)")
 	}
 
 	return nil
 }
 
-func validatePasswordChangeRequest(req *database.PasswordChangeRequest) error {
-	if len(req.CurrentPassword) == 0 {
-		return errors.New("current password is required")
-	}
+// ========================================
+// STRING HELPERS
+// ========================================
 
-	if len(req.NewPassword) < 6 {
-		return errors.New("new password must be at least 6 characters")
-	}
-
-	if req.CurrentPassword == req.NewPassword {
-		return errors.New("new password must be different from current password")
-	}
-
-	return nil
+// sanitizeString trims whitespace
+func sanitizeString(s string) string {
+	return strings.TrimSpace(s)
 }
 
-func isValidEmail(email string) bool {
-	// Simple email validation
-	return strings.Contains(email, "@") && strings.Contains(email, ".") && len(email) > 5
-}
-
-func isValidRole(role string) bool {
-	validRoles := map[string]bool{
-		"admin":  true,
-		"editor": true,
-		"user":   true,
+// truncateString truncates string to max length
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
 	}
-	return validRoles[role]
+	return s[:maxLen]
 }
