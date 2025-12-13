@@ -1,14 +1,32 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
 
+	"news-portal-web/api/internal/auth"
 	"news-portal-web/api/internal/database"
 
 	"github.com/gorilla/mux"
 )
+
+// ========================================
+// HELPER: Get User ID from Context
+// ========================================
+
+func getUserIDFromContext(ctx context.Context) (int, bool) {
+	// Try int first
+	if userID, ok := ctx.Value(auth.UserIDKey).(int); ok {
+		return userID, true
+	}
+	// Try *int
+	if userIDPtr, ok := ctx.Value(auth.UserIDKey).(*int); ok && userIDPtr != nil {
+		return *userIDPtr, true
+	}
+	return 0, false
+}
 
 // ========================================
 // AUTHENTICATED USER HANDLERS
@@ -17,13 +35,13 @@ import (
 // handleGetCurrentUser - GET /api/v1/users/me
 func (s *Server) handleGetCurrentUser() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		claims, ok := r.Context().Value(ClaimsKey).(*Claims)
-		if !ok || claims == nil {
+		userID, ok := getUserIDFromContext(r.Context())
+		if !ok {
 			writeJSONError(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
-		user, err := database.GetUserByID(s.GetDB(), claims.UserID)
+		user, err := database.GetUserByID(r.Context(), s.GetDB(), userID)
 		if err != nil {
 			writeJSONError(w, "User tidak ditemukan", http.StatusNotFound)
 			return
@@ -34,8 +52,8 @@ func (s *Server) handleGetCurrentUser() http.HandlerFunc {
 	}
 }
 
-// UpdateUserRequest - Request body untuk update user
-type UpdateUserRequest struct {
+// UpdateUserProfileRequest - Request body untuk update user profile
+type UpdateUserProfileRequest struct {
 	Username string `json:"username"`
 	Email    string `json:"email"`
 }
@@ -43,13 +61,13 @@ type UpdateUserRequest struct {
 // handleUpdateCurrentUser - PUT /api/v1/users/me
 func (s *Server) handleUpdateCurrentUser() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		claims, ok := r.Context().Value(ClaimsKey).(*Claims)
-		if !ok || claims == nil {
+		userID, ok := getUserIDFromContext(r.Context())
+		if !ok {
 			writeJSONError(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
-		var req UpdateUserRequest
+		var req UpdateUserProfileRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSONError(w, "Invalid request body", http.StatusBadRequest)
 			return
@@ -72,7 +90,7 @@ func (s *Server) handleUpdateCurrentUser() http.HandlerFunc {
 		}
 
 		// Check username uniqueness
-		exists, err := database.CheckUsernameExists(s.GetDB(), req.Username, claims.UserID)
+		exists, err := database.CheckUsernameExists(s.GetDB(), req.Username, userID)
 		if err != nil {
 			writeJSONError(w, "Error checking username", http.StatusInternalServerError)
 			return
@@ -83,7 +101,7 @@ func (s *Server) handleUpdateCurrentUser() http.HandlerFunc {
 		}
 
 		// Check email uniqueness
-		exists, err = database.CheckEmailExists(s.GetDB(), req.Email, claims.UserID)
+		exists, err = database.CheckEmailExists(s.GetDB(), req.Email, userID)
 		if err != nil {
 			writeJSONError(w, "Error checking email", http.StatusInternalServerError)
 			return
@@ -93,8 +111,8 @@ func (s *Server) handleUpdateCurrentUser() http.HandlerFunc {
 			return
 		}
 
-		// Gunakan UpdateUserBasic bukan UpdateUser
-		user, err := database.UpdateUserBasic(s.GetDB(), claims.UserID, req.Username, req.Email)
+		// Update user
+		user, err := database.UpdateUserBasic(s.GetDB(), userID, req.Username, req.Email)
 		if err != nil {
 			writeJSONError(w, "Error updating user", http.StatusInternalServerError)
 			return
@@ -114,8 +132,8 @@ type ChangePasswordRequest struct {
 // handleChangePassword - PUT /api/v1/users/me/password
 func (s *Server) handleChangePassword() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		claims, ok := r.Context().Value(ClaimsKey).(*Claims)
-		if !ok || claims == nil {
+		userID, ok := getUserIDFromContext(r.Context())
+		if !ok {
 			writeJSONError(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -137,7 +155,7 @@ func (s *Server) handleChangePassword() http.HandlerFunc {
 		}
 
 		// Get current user
-		user, err := database.GetUserByID(s.GetDB(), claims.UserID)
+		user, err := database.GetUserByID(r.Context(), s.GetDB(), userID)
 		if err != nil {
 			writeJSONError(w, "User tidak ditemukan", http.StatusNotFound)
 			return
@@ -150,7 +168,7 @@ func (s *Server) handleChangePassword() http.HandlerFunc {
 		}
 
 		// Update password
-		err = database.UpdateUserPassword(s.GetDB(), claims.UserID, req.NewPassword)
+		err = database.UpdateUserPassword(s.GetDB(), userID, req.NewPassword)
 		if err != nil {
 			writeJSONError(w, "Error updating password", http.StatusInternalServerError)
 			return
@@ -191,7 +209,7 @@ func (s *Server) handleGetUserByID() http.HandlerFunc {
 			return
 		}
 
-		user, err := database.GetUserByID(s.GetDB(), userID)
+		user, err := database.GetUserByID(r.Context(), s.GetDB(), userID)
 		if err != nil {
 			writeJSONError(w, "User tidak ditemukan", http.StatusNotFound)
 			return
@@ -218,7 +236,7 @@ func (s *Server) handleUpdateUserRole() http.HandlerFunc {
 		}
 
 		// Check if user exists
-		_, err = database.GetUserByID(s.GetDB(), userID)
+		_, err = database.GetUserByID(r.Context(), s.GetDB(), userID)
 		if err != nil {
 			writeJSONError(w, "User tidak ditemukan", http.StatusNotFound)
 			return
@@ -231,7 +249,7 @@ func (s *Server) handleUpdateUserRole() http.HandlerFunc {
 		}
 
 		// Validate role
-		if req.Role != "admin" && req.Role != "editor" && req.Role != "user" {
+		if !isValidRole(req.Role) {
 			writeJSONError(w, "Role tidak valid (admin, editor, user)", http.StatusBadRequest)
 			return
 		}
@@ -253,8 +271,8 @@ func (s *Server) handleUpdateUserRole() http.HandlerFunc {
 // handleDeleteUser - DELETE /api/v1/admin/users/{id}
 func (s *Server) handleDeleteUser() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		claims, ok := r.Context().Value(ClaimsKey).(*Claims)
-		if !ok || claims == nil {
+		currentUserID, ok := getUserIDFromContext(r.Context())
+		if !ok {
 			writeJSONError(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -267,13 +285,13 @@ func (s *Server) handleDeleteUser() http.HandlerFunc {
 		}
 
 		// Prevent self-deletion
-		if userID == claims.UserID {
+		if userID == currentUserID {
 			writeJSONError(w, "Tidak bisa menghapus akun sendiri", http.StatusBadRequest)
 			return
 		}
 
 		// Check if user exists
-		_, err = database.GetUserByID(s.GetDB(), userID)
+		_, err = database.GetUserByID(r.Context(), s.GetDB(), userID)
 		if err != nil {
 			writeJSONError(w, "User tidak ditemukan", http.StatusNotFound)
 			return
@@ -296,7 +314,14 @@ func (s *Server) handleDeleteUser() http.HandlerFunc {
 // ROUTE REGISTRATION
 // ========================================
 
-// RegisterAdminUserRoutes - Register admin user routes
+// RegisterUserRoutes registers authenticated user routes
+func (s *Server) RegisterUserRoutes(r *mux.Router) {
+	r.HandleFunc("/users/me", s.handleGetCurrentUser()).Methods("GET")
+	r.HandleFunc("/users/me", s.handleUpdateCurrentUser()).Methods("PUT")
+	r.HandleFunc("/users/me/password", s.handleChangePassword()).Methods("PUT")
+}
+
+// RegisterAdminUserRoutes registers admin user management routes
 func (s *Server) RegisterAdminUserRoutes(r *mux.Router) {
 	r.HandleFunc("/users", s.handleGetAllUsers()).Methods("GET")
 	r.HandleFunc("/users/{id:[0-9]+}", s.handleGetUserByID()).Methods("GET")

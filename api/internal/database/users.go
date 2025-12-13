@@ -1,27 +1,36 @@
 package database
 
 import (
+	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
+// ========================================
+// MODELS
+// ========================================
+
 type User struct {
 	UserID            int       `json:"user_id"`
 	Username          string    `json:"username"`
 	Email             string    `json:"email"`
+	Password          string    `json:"-"` // Never expose password
 	Role              string    `json:"role"`
-	Password          string    `json:"-"` // Never expose password in JSON
 	TanggalDibuat     time.Time `json:"tanggal_dibuat"`
 	TanggalDiperbarui time.Time `json:"tanggal_diperbarui"`
+	CreatedAt         time.Time `json:"created_at"` // Alias for compatibility
 }
 
-type UserInput struct {
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Password string `json:"password,omitempty"`
-	Role     string `json:"role,omitempty"`
+type UserProfile struct {
+	UserID    int       `json:"user_id"`
+	Username  string    `json:"username"`
+	Email     string    `json:"email"`
+	Role      string    `json:"role"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type UserResponse struct {
@@ -33,17 +42,39 @@ type UserResponse struct {
 	TanggalDiperbarui time.Time `json:"tanggal_diperbarui"`
 }
 
-// ToResponse converts User to UserResponse (without password)
-func (u *User) ToResponse() UserResponse {
-	return UserResponse{
-		UserID:            u.UserID,
-		Username:          u.Username,
-		Email:             u.Email,
-		Role:              u.Role,
-		TanggalDibuat:     u.TanggalDibuat,
-		TanggalDiperbarui: u.TanggalDiperbarui,
-	}
+// ========================================
+// REQUEST TYPES
+// ========================================
+
+type LoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
+
+type UserRequest struct {
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+	Role     string `json:"role,omitempty"`
+}
+
+type UserUpdateRequest struct {
+	Username string `json:"username,omitempty"`
+	Email    string `json:"email,omitempty"`
+	Password string `json:"password,omitempty"`
+	Role     string `json:"role,omitempty"`
+}
+
+type UserInput struct {
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Password string `json:"password,omitempty"`
+	Role     string `json:"role,omitempty"`
+}
+
+// ========================================
+// HELPER METHODS
+// ========================================
 
 // ToPublic returns user data without sensitive information
 func (u *User) ToPublic() UserResponse {
@@ -57,194 +88,84 @@ func (u *User) ToPublic() UserResponse {
 	}
 }
 
-// GetAllUsers retrieves all users
-func GetAllUsers(db *sql.DB) ([]User, error) {
-	query := `
-        SELECT user_id, username, email, role, password, tanggal_dibuat, tanggal_diperbarui
-        FROM users
-        ORDER BY tanggal_dibuat DESC
-    `
-
-	rows, err := db.Query(query)
-	if err != nil {
-		return nil, err
+// ToProfile returns user profile data
+func (u *User) ToProfile() UserProfile {
+	createdAt := u.TanggalDibuat
+	if !u.CreatedAt.IsZero() {
+		createdAt = u.CreatedAt
 	}
-	defer rows.Close()
-
-	var users []User
-	for rows.Next() {
-		var u User
-		err := rows.Scan(&u.UserID, &u.Username, &u.Email, &u.Role, &u.Password, &u.TanggalDibuat, &u.TanggalDiperbarui)
-		if err != nil {
-			return nil, err
-		}
-		users = append(users, u)
+	return UserProfile{
+		UserID:    u.UserID,
+		Username:  u.Username,
+		Email:     u.Email,
+		Role:      u.Role,
+		CreatedAt: createdAt,
 	}
-
-	return users, nil
 }
 
-// GetUserByID retrieves a single user by ID
-func GetUserByID(db *sql.DB, id int) (*User, error) {
-	query := `
-        SELECT user_id, username, email, role, password, tanggal_dibuat, tanggal_diperbarui
-        FROM users
-        WHERE user_id = $1
-    `
+// ========================================
+// PASSWORD FUNCTIONS
+// ========================================
 
-	var u User
-	err := db.QueryRow(query, id).Scan(&u.UserID, &u.Username, &u.Email, &u.Role, &u.Password, &u.TanggalDibuat, &u.TanggalDiperbarui)
-	if err != nil {
-		return nil, err
-	}
-
-	return &u, nil
+// HashPassword hashes a plain text password
+func HashPassword(password string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	return string(bytes), err
 }
 
-// GetUserByEmail retrieves a user by email
-func GetUserByEmail(db *sql.DB, email string) (*User, error) {
-	query := `
-        SELECT user_id, username, email, role, password, tanggal_dibuat, tanggal_diperbarui
-        FROM users
-        WHERE email = $1
-    `
-
-	var u User
-	err := db.QueryRow(query, email).Scan(&u.UserID, &u.Username, &u.Email, &u.Role, &u.Password, &u.TanggalDibuat, &u.TanggalDiperbarui)
-	if err != nil {
-		return nil, err
-	}
-
-	return &u, nil
+// VerifyPassword checks if the provided password matches the hashed password
+func VerifyPassword(hashedPassword, password string) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
+	return err == nil
 }
 
-// GetUserByUsername retrieves a user by username
-func GetUserByUsername(db *sql.DB, username string) (*User, error) {
-	query := `
-        SELECT user_id, username, email, role, password, tanggal_dibuat, tanggal_diperbarui
-        FROM users
-        WHERE username = $1
-    `
-
-	var u User
-	err := db.QueryRow(query, username).Scan(&u.UserID, &u.Username, &u.Email, &u.Role, &u.Password, &u.TanggalDibuat, &u.TanggalDiperbarui)
-	if err != nil {
-		return nil, err
-	}
-
-	return &u, nil
+// ValidatePassword is an alias for VerifyPassword
+func ValidatePassword(hashedPassword, password string) bool {
+	return VerifyPassword(hashedPassword, password)
 }
 
-// CreateUser creates a new user with hashed password
-func CreateUser(db *sql.DB, input UserInput) (*User, error) {
-	// Hash the password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+// ========================================
+// AUTHENTICATION
+// ========================================
+
+// AuthenticateUser validates credentials and returns user if valid
+func AuthenticateUser(ctx context.Context, db *sql.DB, req *LoginRequest) (*User, error) {
+	user, err := GetUserByEmail(ctx, db, req.Email)
 	if err != nil {
-		return nil, err
+		return nil, errors.New("invalid credentials")
 	}
 
-	// Set default role if not provided
-	role := input.Role
-	if role == "" {
-		role = "user"
+	if !VerifyPassword(user.Password, req.Password) {
+		return nil, errors.New("invalid credentials")
 	}
 
-	query := `
-        INSERT INTO users (username, email, password, role)
-        VALUES ($1, $2, $3, $4)
-        RETURNING user_id, username, email, role, password, tanggal_dibuat, tanggal_diperbarui
-    `
-
-	var u User
-	err = db.QueryRow(query, input.Username, input.Email, string(hashedPassword), role).Scan(
-		&u.UserID, &u.Username, &u.Email, &u.Role, &u.Password, &u.TanggalDibuat, &u.TanggalDiperbarui,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return &u, nil
+	return user, nil
 }
 
-// UpdateUser updates an existing user
-func UpdateUser(db *sql.DB, id int, input UserInput) (*User, error) {
-	// Start building the query
-	query := `UPDATE users SET username = $1, email = $2`
-	args := []interface{}{input.Username, input.Email}
-	argCount := 2
+// ========================================
+// EXISTENCE CHECKS
+// ========================================
 
-	// If password is provided, hash and update it
-	if input.Password != "" {
-		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
-		if err != nil {
-			return nil, err
-		}
-		argCount++
-		query += ", password = $" + string(rune('0'+argCount))
-		args = append(args, string(hashedPassword))
-	}
-
-	// If role is provided, update it
-	if input.Role != "" {
-		argCount++
-		query += ", role = $" + string(rune('0'+argCount))
-		args = append(args, input.Role)
-	}
-
-	argCount++
-	query += " WHERE user_id = $" + string(rune('0'+argCount))
-	args = append(args, id)
-
-	query += " RETURNING user_id, username, email, role, password, tanggal_dibuat, tanggal_diperbarui"
-
-	var u User
-	err := db.QueryRow(query, args...).Scan(
-		&u.UserID, &u.Username, &u.Email, &u.Role, &u.Password, &u.TanggalDibuat, &u.TanggalDiperbarui,
-	)
+// IsEmailExists checks if email already exists in database
+func IsEmailExists(ctx context.Context, db *sql.DB, email string) (bool, error) {
+	query := `SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)`
+	var exists bool
+	err := db.QueryRowContext(ctx, query, email).Scan(&exists)
 	if err != nil {
-		return nil, err
+		return false, err
 	}
-
-	return &u, nil
+	return exists, nil
 }
 
-// UpdateUserBasic updates username and email only (used by handleUpdateCurrentUser)
-func UpdateUserBasic(db *sql.DB, id int, username, email string) (*User, error) {
-	query := `
-        UPDATE users 
-        SET username = $1, email = $2
-        WHERE user_id = $3
-        RETURNING user_id, username, email, role, password, tanggal_dibuat, tanggal_diperbarui
-    `
-
-	var u User
-	err := db.QueryRow(query, username, email, id).Scan(
-		&u.UserID, &u.Username, &u.Email, &u.Role, &u.Password, &u.TanggalDibuat, &u.TanggalDiperbarui,
-	)
+// IsUsernameExists checks if username already exists in database
+func IsUsernameExists(ctx context.Context, db *sql.DB, username string) (bool, error) {
+	query := `SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)`
+	var exists bool
+	err := db.QueryRowContext(ctx, query, username).Scan(&exists)
 	if err != nil {
-		return nil, err
+		return false, err
 	}
-
-	return &u, nil
-}
-
-// DeleteUser deletes a user by ID
-func DeleteUser(db *sql.DB, id int) error {
-	result, err := db.Exec("DELETE FROM users WHERE user_id = $1", id)
-	if err != nil {
-		return err
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if rowsAffected == 0 {
-		return sql.ErrNoRows
-	}
-
-	return nil
+	return exists, nil
 }
 
 // CheckUsernameExists checks if username exists excluding a specific user ID
@@ -269,23 +190,254 @@ func CheckEmailExists(db *sql.DB, email string, excludeUserID int) (bool, error)
 	return exists, nil
 }
 
-// VerifyPassword checks if the provided password matches the hashed password
-func VerifyPassword(hashedPassword, password string) bool {
-	err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
-	return err == nil
+// ========================================
+// USER CRUD OPERATIONS
+// ========================================
+
+// CreateUser creates a new user
+func CreateUser(ctx context.Context, db *sql.DB, req *UserRequest) (*User, error) {
+	hashedPassword, err := HashPassword(req.Password)
+	if err != nil {
+		return nil, fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	role := req.Role
+	if role == "" {
+		role = "user"
+	}
+
+	query := `
+        INSERT INTO users (username, email, password, role)
+        VALUES ($1, $2, $3, $4)
+        RETURNING user_id, username, email, role, tanggal_dibuat, tanggal_diperbarui
+    `
+
+	var user User
+	err = db.QueryRowContext(ctx, query, req.Username, req.Email, hashedPassword, role).Scan(
+		&user.UserID, &user.Username, &user.Email, &user.Role,
+		&user.TanggalDibuat, &user.TanggalDiperbarui,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create user: %w", err)
+	}
+
+	user.CreatedAt = user.TanggalDibuat
+	return &user, nil
 }
 
-// UpdateUserPassword updates only the password for a user
-func UpdateUserPassword(db *sql.DB, userID int, newPassword string) error {
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+// GetUserByID retrieves a user by ID
+func GetUserByID(ctx context.Context, db *sql.DB, id int) (*User, error) {
+	query := `
+        SELECT user_id, username, email, password, role, tanggal_dibuat, tanggal_diperbarui
+        FROM users
+        WHERE user_id = $1
+    `
+
+	var user User
+	err := db.QueryRowContext(ctx, query, id).Scan(
+		&user.UserID, &user.Username, &user.Email, &user.Password, &user.Role,
+		&user.TanggalDibuat, &user.TanggalDiperbarui,
+	)
 	if err != nil {
-		return err
+		if err == sql.ErrNoRows {
+			return nil, errors.New("user not found")
+		}
+		return nil, err
+	}
+
+	user.CreatedAt = user.TanggalDibuat
+	return &user, nil
+}
+
+// GetUserByIDSimple retrieves a user by ID without context
+func GetUserByIDSimple(db *sql.DB, id int) (*User, error) {
+	query := `
+        SELECT user_id, username, email, password, role, tanggal_dibuat, tanggal_diperbarui
+        FROM users
+        WHERE user_id = $1
+    `
+
+	var user User
+	err := db.QueryRow(query, id).Scan(
+		&user.UserID, &user.Username, &user.Email, &user.Password, &user.Role,
+		&user.TanggalDibuat, &user.TanggalDiperbarui,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, errors.New("user not found")
+		}
+		return nil, err
+	}
+
+	user.CreatedAt = user.TanggalDibuat
+	return &user, nil
+}
+
+// GetUserByEmail retrieves a user by email
+func GetUserByEmail(ctx context.Context, db *sql.DB, email string) (*User, error) {
+	query := `
+        SELECT user_id, username, email, password, role, tanggal_dibuat, tanggal_diperbarui
+        FROM users
+        WHERE email = $1
+    `
+
+	var user User
+	err := db.QueryRowContext(ctx, query, email).Scan(
+		&user.UserID, &user.Username, &user.Email, &user.Password, &user.Role,
+		&user.TanggalDibuat, &user.TanggalDiperbarui,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, errors.New("user not found")
+		}
+		return nil, err
+	}
+
+	user.CreatedAt = user.TanggalDibuat
+	return &user, nil
+}
+
+// GetUserByUsername retrieves a user by username
+func GetUserByUsername(ctx context.Context, db *sql.DB, username string) (*User, error) {
+	query := `
+        SELECT user_id, username, email, password, role, tanggal_dibuat, tanggal_diperbarui
+        FROM users
+        WHERE username = $1
+    `
+
+	var user User
+	err := db.QueryRowContext(ctx, query, username).Scan(
+		&user.UserID, &user.Username, &user.Email, &user.Password, &user.Role,
+		&user.TanggalDibuat, &user.TanggalDiperbarui,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, errors.New("user not found")
+		}
+		return nil, err
+	}
+
+	user.CreatedAt = user.TanggalDibuat
+	return &user, nil
+}
+
+// GetAllUsers retrieves all users
+func GetAllUsers(db *sql.DB) ([]UserResponse, error) {
+	query := `
+        SELECT user_id, username, email, role, tanggal_dibuat, tanggal_diperbarui
+        FROM users
+        ORDER BY tanggal_dibuat DESC
+    `
+
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []UserResponse
+	for rows.Next() {
+		var user UserResponse
+		err := rows.Scan(
+			&user.UserID, &user.Username, &user.Email, &user.Role,
+			&user.TanggalDibuat, &user.TanggalDiperbarui,
+		)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+
+	if users == nil {
+		users = []UserResponse{}
+	}
+
+	return users, nil
+}
+
+// UpdateUser updates a user's information
+func UpdateUser(ctx context.Context, db *sql.DB, id int, req *UserUpdateRequest) (*User, error) {
+	// Get existing user
+	existing, err := GetUserByID(ctx, db, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build update query dynamically
+	username := existing.Username
+	email := existing.Email
+	role := existing.Role
+
+	if req.Username != "" {
+		username = req.Username
+	}
+	if req.Email != "" {
+		email = req.Email
+	}
+	if req.Role != "" {
+		role = req.Role
+	}
+
+	query := `
+        UPDATE users
+        SET username = $1, email = $2, role = $3
+        WHERE user_id = $4
+        RETURNING user_id, username, email, role, tanggal_dibuat, tanggal_diperbarui
+    `
+
+	var user User
+	err = db.QueryRowContext(ctx, query, username, email, role, id).Scan(
+		&user.UserID, &user.Username, &user.Email, &user.Role,
+		&user.TanggalDibuat, &user.TanggalDiperbarui,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update user: %w", err)
+	}
+
+	// Update password if provided
+	if req.Password != "" {
+		if err := UpdateUserPassword(db, id, req.Password); err != nil {
+			return nil, err
+		}
+	}
+
+	user.CreatedAt = user.TanggalDibuat
+	return &user, nil
+}
+
+// UpdateUserBasic updates username and email only
+func UpdateUserBasic(db *sql.DB, id int, username, email string) (*User, error) {
+	query := `
+        UPDATE users
+        SET username = $1, email = $2
+        WHERE user_id = $3
+        RETURNING user_id, username, email, password, role, tanggal_dibuat, tanggal_diperbarui
+    `
+
+	var user User
+	err := db.QueryRow(query, username, email, id).Scan(
+		&user.UserID, &user.Username, &user.Email, &user.Password, &user.Role,
+		&user.TanggalDibuat, &user.TanggalDiperbarui,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update user: %w", err)
+	}
+
+	user.CreatedAt = user.TanggalDibuat
+	return &user, nil
+}
+
+// UpdateUserPassword updates only the password
+func UpdateUserPassword(db *sql.DB, userID int, newPassword string) error {
+	hashedPassword, err := HashPassword(newPassword)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
 	}
 
 	query := `UPDATE users SET password = $1 WHERE user_id = $2`
-	result, err := db.Exec(query, string(hashedPassword), userID)
+	result, err := db.Exec(query, hashedPassword, userID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to update password: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
@@ -300,12 +452,32 @@ func UpdateUserPassword(db *sql.DB, userID int, newPassword string) error {
 	return nil
 }
 
-// UpdateUserRole updates only the role for a user
+// UpdateUserRole updates only the role
 func UpdateUserRole(db *sql.DB, userID int, role string) error {
 	query := `UPDATE users SET role = $1 WHERE user_id = $2`
 	result, err := db.Exec(query, role, userID)
 	if err != nil {
+		return fmt.Errorf("failed to update role: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
 		return err
+	}
+
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
+// DeleteUser deletes a user by ID
+func DeleteUser(db *sql.DB, id int) error {
+	query := `DELETE FROM users WHERE user_id = $1`
+	result, err := db.Exec(query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete user: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
