@@ -6,12 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 type Tag struct {
-	TagID   int    `json:"tag_id"`
-	NamaTag string `json:"nama_tag"`
-	// Hapus CreatedAt field karena tidak ada di database
+	TagID     int       `json:"tag_id"`
+	NamaTag   string    `json:"nama_tag"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type TagRequest struct {
@@ -22,12 +23,12 @@ func CreateTag(ctx context.Context, db *sql.DB, req *TagRequest) (*Tag, error) {
 	query := `
         INSERT INTO tags (nama_tag)
         VALUES ($1)
-        RETURNING tag_id, nama_tag
+        RETURNING tag_id, nama_tag, created_at
     `
 
 	var tag Tag
 	err := db.QueryRowContext(ctx, query, req.NamaTag).Scan(
-		&tag.TagID, &tag.NamaTag)
+		&tag.TagID, &tag.NamaTag, &tag.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create tag: %w", err)
 	}
@@ -39,12 +40,12 @@ func CreateTagTx(ctx context.Context, tx *sql.Tx, req *TagRequest) (*Tag, error)
 	query := `
         INSERT INTO tags (nama_tag)
         VALUES ($1)
-        RETURNING tag_id, nama_tag
+        RETURNING tag_id, nama_tag, created_at
     `
 
 	var tag Tag
 	err := tx.QueryRowContext(ctx, query, req.NamaTag).Scan(
-		&tag.TagID, &tag.NamaTag)
+		&tag.TagID, &tag.NamaTag, &tag.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create tag: %w", err)
 	}
@@ -54,14 +55,14 @@ func CreateTagTx(ctx context.Context, tx *sql.Tx, req *TagRequest) (*Tag, error)
 
 func GetTagByID(ctx context.Context, db *sql.DB, tagID int) (*Tag, error) {
 	query := `
-        SELECT tag_id, nama_tag
+        SELECT tag_id, nama_tag, created_at
         FROM tags
         WHERE tag_id = $1
     `
 
 	var tag Tag
 	err := db.QueryRowContext(ctx, query, tagID).Scan(
-		&tag.TagID, &tag.NamaTag)
+		&tag.TagID, &tag.NamaTag, &tag.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, errors.New("tag not found")
@@ -74,14 +75,14 @@ func GetTagByID(ctx context.Context, db *sql.DB, tagID int) (*Tag, error) {
 
 func GetTagByName(ctx context.Context, db *sql.DB, name string) (*Tag, error) {
 	query := `
-        SELECT tag_id, nama_tag
+        SELECT tag_id, nama_tag, created_at
         FROM tags
-        WHERE nama_tag = $1
+        WHERE LOWER(nama_tag) = LOWER($1)
     `
 
 	var tag Tag
 	err := db.QueryRowContext(ctx, query, name).Scan(
-		&tag.TagID, &tag.NamaTag)
+		&tag.TagID, &tag.NamaTag, &tag.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, errors.New("tag not found")
@@ -94,7 +95,7 @@ func GetTagByName(ctx context.Context, db *sql.DB, name string) (*Tag, error) {
 
 func ListTags(ctx context.Context, db *sql.DB) ([]Tag, error) {
 	query := `
-        SELECT tag_id, nama_tag
+        SELECT tag_id, nama_tag, created_at
         FROM tags
         ORDER BY nama_tag ASC
     `
@@ -108,7 +109,7 @@ func ListTags(ctx context.Context, db *sql.DB) ([]Tag, error) {
 	var tags []Tag
 	for rows.Next() {
 		var tag Tag
-		err := rows.Scan(&tag.TagID, &tag.NamaTag)
+		err := rows.Scan(&tag.TagID, &tag.NamaTag, &tag.CreatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -228,15 +229,15 @@ func SearchTags(ctx context.Context, db *sql.DB, keyword string) ([]Tag, error) 
 
 func UpdateTag(ctx context.Context, db *sql.DB, tagID int, req *TagRequest) (*Tag, error) {
 	query := `
-        UPDATE tags 
+        UPDATE tags
         SET nama_tag = $1
         WHERE tag_id = $2
-        RETURNING tag_id, nama_tag
+        RETURNING tag_id, nama_tag, created_at
     `
 
 	var tag Tag
 	err := db.QueryRowContext(ctx, query, req.NamaTag, tagID).Scan(
-		&tag.TagID, &tag.NamaTag)
+		&tag.TagID, &tag.NamaTag, &tag.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, errors.New("tag not found")
@@ -249,15 +250,15 @@ func UpdateTag(ctx context.Context, db *sql.DB, tagID int, req *TagRequest) (*Ta
 
 func UpdateTagTx(ctx context.Context, tx *sql.Tx, tagID int, req *TagRequest) (*Tag, error) {
 	query := `
-        UPDATE tags 
+        UPDATE tags
         SET nama_tag = $1
         WHERE tag_id = $2
-        RETURNING tag_id, nama_tag
+        RETURNING tag_id, nama_tag, created_at
     `
 
 	var tag Tag
 	err := tx.QueryRowContext(ctx, query, req.NamaTag, tagID).Scan(
-		&tag.TagID, &tag.NamaTag)
+		&tag.TagID, &tag.NamaTag, &tag.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, errors.New("tag not found")

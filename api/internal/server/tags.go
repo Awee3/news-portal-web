@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"news-portal/api/internal/database"
+	"news-portal-web/api/internal/database"
 
 	"github.com/gorilla/mux"
 )
@@ -281,16 +281,21 @@ func (s *Server) handleCreateMultipleTags() http.HandlerFunc {
 	}
 }
 
-func (s *Server) RegisterTagRoutes(r *mux.Router) {
-	// Public routes
-	r.HandleFunc("/", s.handleGetTag()).Methods("GET")
-	r.HandleFunc("/{id:[0-9]+}", s.handleGetTag()).Methods("GET")
+// ========================================
+// ROUTE REGISTRATION
+// ========================================
 
-	// Protected routes (requires authentication)
-	r.HandleFunc("/", s.handleCreateTag()).Methods("POST")
-	r.HandleFunc("/bulk", s.handleCreateMultipleTags()).Methods("POST")
-	r.HandleFunc("/{id:[0-9]+}", s.handleUpdateTag()).Methods("PUT")
-	r.HandleFunc("/{id:[0-9]+}", s.handleDeleteTag()).Methods("DELETE")
+// RegisterPublicTagRoutes registers public tag routes
+func (s *Server) RegisterPublicTagRoutes(r *mux.Router) {
+	r.HandleFunc("/tags", s.handleGetTag()).Methods("GET")
+	r.HandleFunc("/tags/{id:[0-9]+}", s.handleGetTag()).Methods("GET")
+}
+
+// RegisterAdminTagRoutes registers admin tag routes
+func (s *Server) RegisterAdminTagRoutes(r *mux.Router) {
+	r.HandleFunc("/tags", s.handleCreateTag()).Methods("POST")
+	r.HandleFunc("/tags/{id:[0-9]+}", s.handleUpdateTag()).Methods("PUT")
+	r.HandleFunc("/tags/{id:[0-9]+}", s.handleDeleteTag()).Methods("DELETE")
 }
 
 func validateTagRequest(req *database.TagRequest) error {
