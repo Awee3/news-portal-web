@@ -3,143 +3,117 @@ package server
 import (
 	"net/http"
 
-	"news-portal/api/internal/auth"
+	"news-portal-web/api/internal/auth"
 
 	"github.com/gorilla/mux"
 )
 
-// setupRoutes configures all routes on the provided router
-func (s *Server) setupRoutes(router *mux.Router) {
-	// Basic health and utility endpoints
-	s.registerBasicRoutes(router)
+// SetupRoutes configures and returns the router with all API routes
+func (s *Server) SetupRoutes() *mux.Router {
+	r := mux.NewRouter()
 
-	// Serve static files
-	s.registerStaticRoutes(router)
+	// ========================================
+	// API v1 ROUTER
+	// ========================================
+	api := r.PathPrefix("/api/v1").Subrouter()
 
-	// Authentication routes (public)
-	s.registerAuthRoutes(router)
+	// ========================================
+    // BASIC ROUTES (tanpa prefix)
+    // ========================================
+    r.HandleFunc("/", s.handleWelcome()).Methods("GET")
+    r.HandleFunc("/health", s.handleHealth()).Methods("GET")
+    r.HandleFunc("/ping", s.handlePing()).Methods("GET")
+    r.HandleFunc("/db-test", s.handleDBTest()).Methods("GET")
+	
+	// ========================================
+	// PUBLIC ROUTES (no auth required)
+	// ========================================
+	public := api.NewRoute().Subrouter()
 
-	// Public API routes (no authentication required)
-	s.registerPublicAPIRoutes(router)
+	// Articles - public endpoints
+	s.RegisterPublicArticleRoutes(public)
 
-	// Protected API routes (authentication required)
-	s.registerProtectedAPIRoutes(router)
+	// Categories - public endpoints
+	s.RegisterPublicCategoryRoutes(public)
+
+	// Tags - public endpoints
+	s.RegisterPublicTagRoutes(public)
+
+	// Comments - public endpoints (get & create)
+	s.RegisterPublicCommentRoutes(public)
+
+	// Auth routes (login, register, refresh)
+	public.HandleFunc("/auth/login", s.handleLogin()).Methods("POST")
+	public.HandleFunc("/auth/register", s.handleRegister()).Methods("POST")
+	public.HandleFunc("/auth/refresh", s.handleRefreshToken()).Methods("POST")
+
+	// ========================================
+	// AUTHENTICATED USER ROUTES
+	// ========================================
+	authenticated := api.NewRoute().Subrouter()
+	authenticated.Use(auth.AuthMiddleware(s.GetJWTManager()))
+
+	// Auth - logout (requires token)
+	authenticated.HandleFunc("/auth/logout", s.handleLogout()).Methods("POST")
+
+	// User profile routes
+	s.RegisterUserRoutes(authenticated)
+
+	// User comment routes
+	s.RegisterUserCommentRoutes(authenticated)
+
+	// ========================================
+	// EDITOR ROUTES (editor + admin only)
+	// ========================================
+	editor := api.PathPrefix("/editor").Subrouter()
+	editor.Use(auth.AuthMiddleware(s.GetJWTManager()))
+	editor.Use(auth.EditorOrAdmin)
+
+	// Editor article management
+	s.RegisterEditorArticleRoutes(editor)
+
+	// ========================================
+	// ADMIN ROUTES (admin only)
+	// ========================================
+	admin := api.PathPrefix("/admin").Subrouter()
+	admin.Use(auth.AuthMiddleware(s.GetJWTManager()))
+	admin.Use(auth.AdminOnly)
+
+	// User management
+	s.RegisterAdminUserRoutes(admin)
+
+	// Category management
+	s.RegisterAdminCategoryRoutes(admin)
+
+	// Tag management
+	s.RegisterAdminTagRoutes(admin)
+
+	// Comment moderation
+	s.RegisterAdminCommentRoutes(admin)
+
+	// ========================================
+	// STATIC FILES
+	// ========================================
+	r.PathPrefix("/uploads/").Handler(
+		http.StripPrefix("/uploads/",
+			http.FileServer(http.Dir("./uploads"))))
+
+	return r
 }
 
-// registerBasicRoutes registers basic health and utility endpoints
-func (s *Server) registerBasicRoutes(router *mux.Router) {
-	router.HandleFunc("/", s.welcome).Methods("GET")
-	router.HandleFunc("/ping", s.ping).Methods("GET")
-	router.HandleFunc("/health", s.healthCheck).Methods("GET")
-	router.HandleFunc("/db-test", s.dbTest).Methods("GET")
+// corsMiddleware adds CORS headers
+func (s *Server) corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
-// registerStaticRoutes registers static file serving
-func (s *Server) registerStaticRoutes(router *mux.Router) {
-	// Serve static files (uploads, images, etc.)
-	fs := http.FileServer(http.Dir("./uploads/"))
-	router.PathPrefix("/uploads/").Handler(http.StripPrefix("/uploads/", fs))
-}
-
-// registerAuthRoutes registers authentication routes
-func (s *Server) registerAuthRoutes(router *mux.Router) {
-	// Auth routes will be implemented in login.go
-	s.RegisterAuthRoutes(router)
-}
-
-// registerPublicAPIRoutes registers public API routes (no auth required)
-func (s *Server) registerPublicAPIRoutes(router *mux.Router) {
-	publicAPI := router.PathPrefix("/api/v1").Subrouter()
-
-	// Optional auth middleware for better user experience
-	publicAPI.Use(s.jwtManager.OptionalAuthMiddleware)
-
-	// Register public routes from other files
-	s.RegisterPublicArticleRoutes(publicAPI)
-	s.RegisterPublicTagRoutes(publicAPI)
-	s.RegisterPublicCategoryRoutes(publicAPI)
-	s.RegisterPublicCommentRoutes(publicAPI)
-}
-
-// registerProtectedAPIRoutes registers protected API routes (auth required)
-func (s *Server) registerProtectedAPIRoutes(router *mux.Router) {
-	protectedAPI := router.PathPrefix("/api/v1").Subrouter()
-	protectedAPI.Use(s.jwtManager.AuthMiddleware)
-
-	// User-level protected routes
-	s.registerUserRoutes(protectedAPI)
-
-	// Editor-level routes (editor + admin)
-	s.registerEditorRoutes(protectedAPI)
-
-	// Admin-only routes
-	s.registerAdminRoutes(protectedAPI)
-}
-
-// registerUserRoutes registers authenticated user routes
-func (s *Server) registerUserRoutes(router *mux.Router) {
-	// User profile and personal data
-	s.RegisterUserProtectedRoutes(router)
-
-	// User interactions with content
-	s.RegisterProtectedArticleRoutes(router)
-	s.RegisterProtectedCommentRoutes(router)
-}
-
-// registerEditorRoutes registers editor and admin content management routes
-func (s *Server) registerEditorRoutes(router *mux.Router) {
-	editorAPI := router.PathPrefix("").Subrouter()
-	editorAPI.Use(auth.EditorOrAdmin)
-
-	// Content management routes for editors
-	s.RegisterEditorRoutes(editorAPI)
-}
-
-// registerAdminRoutes registers admin-only routes
-func (s *Server) registerAdminRoutes(router *mux.Router) {
-	adminAPI := router.PathPrefix("/admin").Subrouter()
-	adminAPI.Use(auth.AdminOnly)
-
-	// Admin management routes
-	s.RegisterAdminRoutes(adminAPI)
-}
-
-// Placeholder route registration functions
-// These will be implemented in their respective files
-
-
-func (s *Server) RegisterPublicArticleRoutes(router *mux.Router) {
-	// Will be implemented in articles.go
-}
-
-func (s *Server) RegisterPublicTagRoutes(router *mux.Router) {
-	// Will be implemented in tags.go
-}
-
-func (s *Server) RegisterPublicCategoryRoutes(router *mux.Router) {
-	// Will be implemented in categories.go
-}
-
-func (s *Server) RegisterPublicCommentRoutes(router *mux.Router) {
-	// Will be implemented in comments.go
-}
-
-func (s *Server) RegisterUserProtectedRoutes(router *mux.Router) {
-	// Will be implemented in users.go or profile.go
-}
-
-func (s *Server) RegisterProtectedArticleRoutes(router *mux.Router) {
-	// Will be implemented in articles.go
-}
-
-func (s *Server) RegisterProtectedCommentRoutes(router *mux.Router) {
-	// Will be implemented in comments.go
-}
-
-func (s *Server) RegisterEditorRoutes(router *mux.Router) {
-	// Will be implemented across multiple files (articles.go, tags.go, etc.)
-}
-
-func (s *Server) RegisterAdminRoutes(router *mux.Router) {
-	// Will be implemented in admin.go or across multiple files
-}
