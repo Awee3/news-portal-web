@@ -13,7 +13,7 @@ export default function Header() {
     { href: "/national", label: "NATIONAL" },
     { href: "/politics", label: "POLITICS" },
     { href: "/business", label: "BUSINESS" },
-    { href: "/sci-tech", label: "SCI-TECH" },
+    { href: "/scitech", label: "SCI-TECH" },
     { href: "/lifestyle", label: "LIFESTYLE" },
     { href: "/health", label: "HEALTH" },
     { href: "/sports", label: "SPORTS" },
