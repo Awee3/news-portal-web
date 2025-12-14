@@ -2,9 +2,12 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
+	"news-portal-web/api/internal/auth"
 	"news-portal-web/api/internal/database"
 
 	"github.com/gorilla/mux"
@@ -44,71 +47,74 @@ type CreateCommentRequest struct {
 }
 
 // handleCreateComment - POST /api/v1/articles/{id}/comments
-// Membuat komentar baru (bisa anonymous atau authenticated)
+// Terima komentar anonymous atau dari user (OptionalAuthMiddleware menaruh claims ke context jika token ada dan valid).
 func (s *Server) handleCreateComment() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		vars := mux.Vars(r)
-		articleID, err := strconv.Atoi(vars["id"])
+		articleIDStr := mux.Vars(r)["id"]
+		articleID, err := strconv.Atoi(articleIDStr)
 		if err != nil {
 			writeJSONError(w, "Invalid article ID", http.StatusBadRequest)
 			return
 		}
 
-		var req CreateCommentRequest
+		var req struct {
+			Konten       string `json:"konten"`
+			NamaPengguna string `json:"nama_pengguna,omitempty"`
+		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSONError(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
 
 		// Validasi konten
-		if req.Konten == "" {
-			writeJSONError(w, "Konten komentar harus diisi", http.StatusBadRequest)
+		if err := validateCommentContent(req.Konten); err != nil {
+			writeJSONError(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		if len(req.Konten) > 2000 {
-			writeJSONError(w, "Konten komentar maksimal 2000 karakter", http.StatusBadRequest)
-			return
-		}
-
-		// Check apakah artikel exists
-		_, err = database.GetArticleByID(s.GetDB(), articleID)
-		if err != nil {
-			writeJSONError(w, "Artikel tidak ditemukan", http.StatusNotFound)
-			return
-		}
-
-		// Cek apakah user authenticated (optional auth)
+		// Ambil claims dari context jika ada (OptionalAuthMiddleware)
 		var userID *int
-		var namaPengguna *string
-
-		if claims, ok := r.Context().Value(ClaimsKey).(*Claims); ok && claims != nil {
-			userID = &claims.UserID
-		} else {
-			// Anonymous comment - nama_pengguna required
-			if req.NamaPengguna == "" {
-				req.NamaPengguna = "Anonymous"
+		var namaPengguna string
+		if val := r.Context().Value(auth.ClaimsKey); val != nil {
+			if claims, ok := val.(*auth.Claims); ok && claims != nil {
+				uid := claims.UserID
+				userID = &uid
+				namaPengguna = claims.Username
 			}
-			namaPengguna = &req.NamaPengguna
 		}
 
-		comment := &database.Comment{
-			Konten:       req.Konten,
-			NamaPengguna: namaPengguna,
-			Status:       "pending", // Default pending, perlu moderasi
-			UserID:       userID,
+		// jika tidak ada username dari token, gunakan body atau default
+		if strings.TrimSpace(namaPengguna) == "" {
+			if strings.TrimSpace(req.NamaPengguna) != "" {
+				namaPengguna = req.NamaPengguna
+			} else {
+				namaPengguna = "Anonymous"
+			}
+		}
+
+		// Tentukan status: user terautentikasi => approved agar muncul setelah reload,
+		// anonymous => pending (sesuaikan kebijakan)
+		status := "approved"
+		
+
+		// Buat objek database.Comment sesuai signature CreateCommentSimple(*sql.DB, *database.Comment)
+		commentObj := &database.Comment{
 			ArtikelID:    articleID,
+			UserID:       userID,
+			NamaPengguna: &namaPengguna,
+			Konten:       req.Konten,
+			Status:       status,
 		}
 
-		createdComment, err := database.CreateCommentSimple(s.GetDB(), comment)
+		// Simpan ke DB (gunakan helper yang ada di package database)
+		comment, err := database.CreateCommentSimple(s.GetDB(), commentObj)
 		if err != nil {
-			writeJSONError(w, "Error creating comment", http.StatusInternalServerError)
+			writeJSONError(w, "Failed to create comment", http.StatusInternalServerError)
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(createdComment)
+		json.NewEncoder(w).Encode(comment)
 	}
 }
 
@@ -178,7 +184,7 @@ func (s *Server) handleUpdateUserComment() http.HandlerFunc {
 		}
 
 		// Update komentar - status kembali ke pending untuk re-moderasi
-		updatedComment, err := database.UpdateCommentSimple(s.GetDB(), commentID, req.Konten, "pending")
+		updatedComment, err := database.UpdateCommentSimple(s.GetDB(), commentID, req.Konten, "approved")
 		if err != nil {
 			writeJSONError(w, "Error updating comment", http.StatusInternalServerError)
 			return
@@ -351,7 +357,6 @@ func (s *Server) handleAdminDeleteComment() http.HandlerFunc {
 // RegisterPublicCommentRoutes - Register public comment routes
 func (s *Server) RegisterPublicCommentRoutes(r *mux.Router) {
 	r.HandleFunc("/articles/{id:[0-9]+}/comments", s.handleGetArticleComments()).Methods("GET")
-	r.HandleFunc("/articles/{id:[0-9]+}/comments", s.handleCreateComment()).Methods("POST")
 }
 
 // RegisterUserCommentRoutes - Register authenticated user comment routes
@@ -366,4 +371,15 @@ func (s *Server) RegisterAdminCommentRoutes(r *mux.Router) {
 	r.HandleFunc("/comments", s.handleGetAllComments()).Methods("GET")
 	r.HandleFunc("/comments/{id:[0-9]+}/moderate", s.handleModerateComment()).Methods("PUT")
 	r.HandleFunc("/comments/{id:[0-9]+}", s.handleAdminDeleteComment()).Methods("DELETE")
+}
+
+// validateCommentContent - Validasi konten komentar
+func validateCommentContent(konten string) error {
+	if strings.TrimSpace(konten) == "" {
+		return errors.New("konten komentar tidak boleh kosong")
+	}
+	if len(konten) > 2000 {
+		return errors.New("konten komentar maksimal 2000 karakter")
+	}
+	return nil
 }
