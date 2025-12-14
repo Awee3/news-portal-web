@@ -18,13 +18,13 @@ func (s *Server) SetupRoutes() *mux.Router {
 	api := r.PathPrefix("/api/v1").Subrouter()
 
 	// ========================================
-    // BASIC ROUTES (tanpa prefix)
-    // ========================================
-    r.HandleFunc("/", s.handleWelcome()).Methods("GET")
-    r.HandleFunc("/health", s.handleHealth()).Methods("GET")
-    r.HandleFunc("/ping", s.handlePing()).Methods("GET")
-    r.HandleFunc("/db-test", s.handleDBTest()).Methods("GET")
-	
+	// BASIC ROUTES (tanpa prefix)
+	// ========================================
+	r.HandleFunc("/", s.handleWelcome()).Methods("GET")
+	r.HandleFunc("/health", s.handleHealth()).Methods("GET")
+	r.HandleFunc("/ping", s.handlePing()).Methods("GET")
+	r.HandleFunc("/db-test", s.handleDBTest()).Methods("GET")
+
 	// ========================================
 	// PUBLIC ROUTES (no auth required)
 	// ========================================
@@ -72,6 +72,9 @@ func (s *Server) SetupRoutes() *mux.Router {
 	// Editor article management
 	s.RegisterEditorArticleRoutes(editor)
 
+	// Upload file (untuk gambar artikel)
+	editor.HandleFunc("/upload", s.handleUpload()).Methods("POST")
+
 	// ========================================
 	// ADMIN ROUTES (admin only)
 	// ========================================
@@ -116,4 +119,3 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
-
