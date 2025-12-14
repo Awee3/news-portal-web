@@ -94,6 +94,13 @@ func (s *Server) SetupRoutes() *mux.Router {
 	// Comment moderation
 	s.RegisterAdminCommentRoutes(admin)
 
+	// ...existing code...
+    // Comments - POST komentar harus login jika token disertakan (optional auth)
+    authComment := api.NewRoute().Subrouter()
+    authComment.Use(auth.OptionalAuthMiddleware(s.GetJWTManager()))
+    authComment.HandleFunc("/articles/{id:[0-9]+}/comments", s.handleCreateComment()).Methods("POST")
+// ...existing code...
+
 	// ========================================
 	// STATIC FILES
 	// ========================================
