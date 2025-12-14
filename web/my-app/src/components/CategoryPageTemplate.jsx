@@ -6,6 +6,7 @@ import ContentBlock from "./sections/ContentBlock";
  * @param {string} categoryName - Nama kategori (e.g., "INTERNATIONAL", "POLITICS")
  * @param {Array} contentBlocks - Array of content blocks (bisa 1-3 blok)
  */
+
 export default function CategoryPageTemplate({ categoryName, contentBlocks = [] }) {
   return (
     <div className="min-h-screen bg-white">
@@ -33,7 +34,7 @@ export default function CategoryPageTemplate({ categoryName, contentBlocks = [] 
         {/* Empty State */}
         {contentBlocks.length === 0 && (
           <div className="text-center py-16 text-gray-500">
-            <p className="text-lg">Belum ada artikel dalam kategori ini.</p>
+            <p className="text-lg">Belum</p>
           </div>
         )}
       </main>
