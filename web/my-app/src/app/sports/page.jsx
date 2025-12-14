@@ -1,67 +1,38 @@
-import CategoryPageTemplate from "@/components/CategoryPageTemplate";
+import Header from "@/components/Header";
+import ContentBlock from "@/components/sections/ContentBlock";
+import { getArticlesByCategory, transformToContentBlocks } from "@/lib/articleHelpers";
 
-export default function SportsPage() {
-  const contentBlocks = [
-    {
-      id: 1,
-      topMainSection: {
-        sideTitles: [
-          {
-            title: "Championship Finals Deliver Thrilling Conclusion",
-            excerpt: "Intense competition culminates in dramatic victory for underdog team.",
-            slug: "championship-finals-thrilling",
-          },
-          {
-            title: "Olympic Athletes Begin Training Camp",
-            excerpt: "National team prepares for upcoming international competition.",
-            slug: "olympic-athletes-training",
-          },
-        ],
-        featured: {
-          img: "/test.png",
-          slug: "sports-featured-article",
-          priority: true,
-        }
-      },
-      carouselItems: [
-        { title: "Transfer Window Sees Major Signings", img: "/test.png", slug: "transfer-window-signings" },
-        { title: "Youth Sports Development Program Launched", img: "/test.png", slug: "youth-sports-program" },
-        { title: "Stadium Renovation Project Completed", img: "/test.png", slug: "stadium-renovation-completed" },
-        { title: "Sports Science Advances Training Methods", img: "/test.png", slug: "sports-science-training" },
-      ],
-      bottomMainSection: {
-        sideTitles: [
-          {
-            title: "Record-Breaking Performance Stuns Audience",
-            excerpt: "Athlete surpasses previous benchmarks in spectacular fashion.",
-            slug: "record-breaking-performance",
-          },
-          {
-            title: "Regional Tournament Schedule Announced",
-            excerpt: "Teams prepare for highly anticipated competitive season.",
-            slug: "regional-tournament-schedule",
-          },
-        ],
-        featured: {
-          img: "/test.png",
-          slug: "record-breaking-featured",
-        }
-      },
-      sidebar: {
-        mainArticle: {
-          title: "Coach Shares Strategy Insights",
-          img: "/test.png",
-          slug: "coach-strategy-insights",
-        },
-        thumbArticles: [
-          { title: "Player Injury Update Released", img: "/test.png", slug: "player-injury-update", date: "Senin, 9 Des 2025" },
-          { title: "Sports Equipment Technology Evolves", img: "/test.png", slug: "sports-equipment-tech", date: "Senin, 9 Des 2025" },
-          { title: "Fan Engagement Initiatives Launched", img: "/test.png", slug: "fan-engagement-initiatives", date: "Minggu, 8 Des 2025" },
-          { title: "Sports Broadcasting Rights Negotiated", img: "/test.png", slug: "broadcasting-rights", date: "Minggu, 8 Des 2025" },
-        ]
-      }
-    }
-  ];
+export default async function SportsPage() {
+  const articles = await getArticlesByCategory("Sports");
+  const contentBlocks = transformToContentBlocks(articles);
 
-  return <CategoryPageTemplate categoryName="SPORTS" contentBlocks={contentBlocks} />;
+  if (contentBlocks.length === 0) {
+    return (
+      <div className="min-h-screen bg-white">
+        <Header />
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="text-center py-16">
+            <p className="text-gray-500">Belum ada artikel Sports yang dipublikasikan.</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-white">
+      <Header />
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {contentBlocks.map((block) => (
+          <ContentBlock
+            key={block.id}
+            topMainSection={block.topMainSection}
+            carouselItems={block.carouselItems}
+            bottomMainSection={block.bottomMainSection}
+            sidebar={block.sidebar}
+          />
+        ))}
+      </main>
+    </div>
+  );
 }

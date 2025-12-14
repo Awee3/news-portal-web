@@ -1,67 +1,38 @@
-import CategoryPageTemplate from "@/components/CategoryPageTemplate";
+import Header from "@/components/Header";
+import ContentBlock from "@/components/sections/ContentBlock";
+import { getArticlesByCategory, transformToContentBlocks } from "@/lib/articleHelpers";
 
-export default function HealthPage() {
-  const contentBlocks = [
-    {
-      id: 1,
-      topMainSection: {
-        sideTitles: [
-          {
-            title: "New Treatment Protocol Shows Promising Results",
-            excerpt: "Clinical trials demonstrate effectiveness in managing chronic conditions.",
-            slug: "treatment-protocol-promising",
-          },
-          {
-            title: "Mental Health Awareness Campaign Launched",
-            excerpt: "Initiative aims to reduce stigma and improve access to services.",
-            slug: "mental-health-awareness",
-          },
-        ],
-        featured: {
-          img: "/test.png",
-          slug: "health-featured-article",
-          priority: true,
-        }
-      },
-      carouselItems: [
-        { title: "Vaccination Drive Reaches Rural Areas", img: "/test.png", slug: "vaccination-drive-rural" },
-        { title: "Nutrition Guidelines Updated", img: "/test.png", slug: "nutrition-guidelines-updated" },
-        { title: "Hospital Capacity Expands to Meet Demand", img: "/test.png", slug: "hospital-capacity-expands" },
-        { title: "Telemedicine Services Improve Accessibility", img: "/test.png", slug: "telemedicine-accessibility" },
-      ],
-      bottomMainSection: {
-        sideTitles: [
-          {
-            title: "Preventive Care Programs Save Lives",
-            excerpt: "Early screening initiatives detect diseases before symptoms appear.",
-            slug: "preventive-care-programs",
-          },
-          {
-            title: "Medical Research Funding Increases",
-            excerpt: "Investment in healthcare innovation promises future breakthroughs.",
-            slug: "medical-research-funding",
-          },
-        ],
-        featured: {
-          img: "/test.png",
-          slug: "preventive-care-featured",
-        }
-      },
-      sidebar: {
-        mainArticle: {
-          title: "Health Insurance Coverage Expands",
-          img: "/test.png",
-          slug: "health-insurance-expands",
-        },
-        thumbArticles: [
-          { title: "Sleep Quality Affects Overall Wellness", img: "/test.png", slug: "sleep-quality-wellness", date: "Senin, 9 Des 2025" },
-          { title: "Exercise Benefits for All Ages", img: "/test.png", slug: "exercise-benefits-ages", date: "Senin, 9 Des 2025" },
-          { title: "Pediatric Care Standards Improved", img: "/test.png", slug: "pediatric-care-standards", date: "Minggu, 8 Des 2025" },
-          { title: "Chronic Disease Management Tips", img: "/test.png", slug: "chronic-disease-management", date: "Minggu, 8 Des 2025" },
-        ]
-      }
-    }
-  ];
+export default async function HealthPage() {
+  const articles = await getArticlesByCategory("Health");
+  const contentBlocks = transformToContentBlocks(articles);
 
-  return <CategoryPageTemplate categoryName="HEALTH" contentBlocks={contentBlocks} />;
+  if (contentBlocks.length === 0) {
+    return (
+      <div className="min-h-screen bg-white">
+        <Header />
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="text-center py-16">
+            <p className="text-gray-500">Belum ada artikel Health yang dipublikasikan.</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-white">
+      <Header />
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {contentBlocks.map((block) => (
+          <ContentBlock
+            key={block.id}
+            topMainSection={block.topMainSection}
+            carouselItems={block.carouselItems}
+            bottomMainSection={block.bottomMainSection}
+            sidebar={block.sidebar}
+          />
+        ))}
+      </main>
+    </div>
+  );
 }

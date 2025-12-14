@@ -1,67 +1,38 @@
-import CategoryPageTemplate from "@/components/CategoryPageTemplate";
+import Header from "@/components/Header";
+import ContentBlock from "@/components/sections/ContentBlock";
+import { getArticlesByCategory, transformToContentBlocks } from "@/lib/articleHelpers";
 
-export default function NationalPage() {
-  const contentBlocks = [
-    {
-      id: 1,
-      topMainSection: {
-        sideTitles: [
-          {
-            title: "Government Announces New Infrastructure Development Plan",
-            excerpt: "Ambitious project aims to improve connectivity across major cities and rural areas.",
-            slug: "government-infrastructure-development-plan",
-          },
-          {
-            title: "National Education Reform Takes Effect",
-            excerpt: "New curriculum standards designed to enhance learning outcomes nationwide.",
-            slug: "national-education-reform",
-          },
-        ],
-        featured: {
-          img: "/test.png",
-          slug: "national-featured-article",
-          priority: true,
-        }
-      },
-      carouselItems: [
-        { title: "Healthcare System Modernization Underway", img: "/test.png", slug: "healthcare-system-modernization" },
-        { title: "Tourism Sector Shows Strong Recovery", img: "/test.png", slug: "tourism-sector-recovery" },
-        { title: "Agricultural Export Reaches Record High", img: "/test.png", slug: "agricultural-export-record" },
-        { title: "Digital Infrastructure Expansion Announced", img: "/test.png", slug: "digital-infrastructure-expansion" },
-      ],
-      bottomMainSection: {
-        sideTitles: [
-          {
-            title: "National Census Results Released",
-            excerpt: "Population data reveals demographic shifts and urbanization trends.",
-            slug: "national-census-results",
-          },
-          {
-            title: "Environmental Protection Law Strengthened",
-            excerpt: "New regulations aim to preserve natural resources for future generations.",
-            slug: "environmental-protection-law",
-          },
-        ],
-        featured: {
-          img: "/test.png",
-          slug: "census-results-featured",
-        }
-      },
-      sidebar: {
-        mainArticle: {
-          title: "Parliament Debates Budget Allocation",
-          img: "/test.png",
-          slug: "parliament-budget-debate",
-        },
-        thumbArticles: [
-          { title: "Transportation Hub Opens in Capital", img: "/test.png", slug: "transportation-hub-opens", date: "Senin, 9 Des 2025" },
-          { title: "National Athletes Prepare for Games", img: "/test.png", slug: "national-athletes-prepare", date: "Senin, 9 Des 2025" },
-          { title: "Cultural Heritage Sites Restored", img: "/test.png", slug: "cultural-heritage-restored", date: "Minggu, 8 Des 2025" },
-          { title: "Renewable Energy Target Announced", img: "/test.png", slug: "renewable-energy-target", date: "Minggu, 8 Des 2025" },
-        ]
-      }
-    }
-  ];
+export default async function NationalPage() {
+  const articles = await getArticlesByCategory("National");
+  const contentBlocks = transformToContentBlocks(articles);
 
-  return <CategoryPageTemplate categoryName="NATIONAL" contentBlocks={contentBlocks} />;
+  if (contentBlocks.length === 0) {
+    return (
+      <div className="min-h-screen bg-white">
+        <Header />
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="text-center py-16">
+            <p className="text-gray-500">Belum ada artikel National yang dipublikasikan.</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-white">
+      <Header />
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {contentBlocks.map((block) => (
+          <ContentBlock
+            key={block.id}
+            topMainSection={block.topMainSection}
+            carouselItems={block.carouselItems}
+            bottomMainSection={block.bottomMainSection}
+            sidebar={block.sidebar}
+          />
+        ))}
+      </main>
+    </div>
+  );
 }
