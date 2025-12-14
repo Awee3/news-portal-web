@@ -37,7 +37,7 @@ type JWTManager struct {
 func NewJWTManager(secretKey string) *JWTManager {
     return &JWTManager{
         secretKey:       []byte(secretKey),
-        accessTokenTTL:  15 * time.Minute,
+        accessTokenTTL:  60 * time.Minute,
         refreshTokenTTL: 7 * 24 * time.Hour,
         revokedTokens:   make(map[string]time.Time),
     }
