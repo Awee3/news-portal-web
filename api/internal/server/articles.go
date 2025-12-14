@@ -31,6 +31,11 @@ func (s *Server) handleGetArticles() http.HandlerFunc {
 			}
 		}
 
+		// NEW: Support filter by category name
+		if kategori := r.URL.Query().Get("kategori"); kategori != "" {
+			filter.KategoriName = kategori
+		}
+
 		if tagID := r.URL.Query().Get("tag_id"); tagID != "" {
 			if id, err := strconv.Atoi(tagID); err == nil {
 				filter.TagID = id

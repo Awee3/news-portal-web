@@ -40,13 +40,14 @@ type ArticleInput struct {
 }
 
 type ArticleFilter struct {
-	Status     string
-	KategoriID int
-	TagID      int
-	UserID     int
-	Search     string
-	Limit      int
-	Offset     int
+	Status       string
+	KategoriID   int
+	KategoriName string // NEW: filter by category name
+	TagID        int
+	UserID       int
+	Search       string
+	Limit        int
+	Offset       int
 }
 
 // GenerateSlug creates URL-friendly slug from title
@@ -102,8 +103,19 @@ func GetAllArticles(db *sql.DB, filter ArticleFilter) ([]Article, error) {
         FROM articles a
         LEFT JOIN artikel_kategori ak ON a.artikel_id = ak.artikel_id
         LEFT JOIN artikel_tag at ON a.artikel_id = at.artikel_id
+    `
+
+	// NEW: Join categories table if filtering by name
+	if filter.KategoriName != "" {
+		query += `
+        LEFT JOIN categories c ON ak.kategori_id = c.kategori_id
+        `
+	}
+
+	query += `
         WHERE 1=1
     `
+
 	args := []interface{}{}
 	argCount := 0
 
@@ -117,6 +129,13 @@ func GetAllArticles(db *sql.DB, filter ArticleFilter) ([]Article, error) {
 		argCount++
 		query += fmt.Sprintf(" AND ak.kategori_id = $%d", argCount)
 		args = append(args, filter.KategoriID)
+	}
+
+	// NEW: Filter by category name
+	if filter.KategoriName != "" {
+		argCount++
+		query += fmt.Sprintf(" AND c.nama_kategori = $%d", argCount)
+		args = append(args, filter.KategoriName)
 	}
 
 	if filter.TagID > 0 {
