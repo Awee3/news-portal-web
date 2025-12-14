@@ -2,11 +2,35 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
 import CurrentDate from "./CurrentDate";
 
 export default function Header() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    // Ambil user dari localStorage saat komponen mount
+    const storedUser = localStorage.getItem("user");
+    if (storedUser) {
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch (error) {
+        console.error("Error parsing user data:", error);
+      }
+    }
+  }, []);
+
+  const handleLogout = () => {
+    // Hapus token dan user dari localStorage
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    localStorage.removeItem("user");
+    setUser(null);
+    router.push("/");
+  };
 
   const navItems = [
     { href: "/international", label: "INTERNATIONAL" },
@@ -45,16 +69,32 @@ export default function Header() {
             </div>
           </div>
           
-          {/* Username dengan Logo di Kanan */}
+          {/* Username atau Login/Register */}
           <div className="flex items-center gap-2 text-gray-600 text-xs uppercase tracking-wide">
-            <span>USERNAME</span>
-            <Image 
-              src="/userLogo.svg" // Ganti .svg ke .png jika file Anda png
-              alt="User Profile" 
-              width={16} 
-              height={16}
-              style={{ filter: 'invert(0.5)' }}
-            />
+            {user ? (
+              <>
+                <span>{user.username}</span>
+                <Image 
+                  src="/userLogo.svg" // Ganti .svg ke .png jika file Anda png
+                  alt="User Profile" 
+                  width={16} 
+                  height={16}
+                  style={{ filter: 'invert(0.5)' }}
+                />
+                <button 
+                  onClick={handleLogout}
+                  className="ml-2 text-blue-600 hover:underline"
+                >
+                  Logout
+                </button>
+              </>
+            ) : (
+              <>
+                <Link href="/login" className="text-blue-600 hover:underline">Login</Link>
+                <span>/</span>
+                <Link href="/register" className="text-blue-600 hover:underline">Register</Link>
+              </>
+            )}
           </div>
         </div>
 
